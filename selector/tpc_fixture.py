@@ -262,6 +262,7 @@ def narrow(fp, path, old, src_root, maps, file_patches, read_src):
     for tid in drop:
         bits &= ~(1 << index[tid])
     kept = ", ".join(sorted(t.rsplit("::", 1)[1] for t in keep)) or "none"
-    note = (f"{path}: data readers; TPC fixture: dropped {len(drop)} TestExecutor test(s) that only need "
-            f"setUpClass to load it (loads: {len(new_pairs)} pairs), kept executor tests: {kept}")
+    note = (f"{path}: data readers; TPC fixture: dropped {len(drop)} TestExecutor test(s) (setUpClass still "
+            f"loads it, {len(old_pairs)} -> {len(new_pairs)} pairs; their part of the pairs is unchanged or "
+            f"unused), kept executor tests: {kept}")
     return bits, note
