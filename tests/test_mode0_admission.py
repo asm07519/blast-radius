@@ -826,7 +826,8 @@ class SeedsTest(SessionBase):
         self.assertEqual(mode0.parse_seeds(""), [])
         self.assertEqual(mode0.parse_seeds(None), [])
         self.assertEqual(mode0.parse_seeds(" 0, 1 "), [0, 1])
-        for bad in ("x", "-1", "0,0", "1.5", str(2 ** 32), "0,,1"):
+        self.assertEqual(mode0.parse_seeds("0 1"), [0, 1])
+        for bad in ("x", "-1", "0,0", "1.5", str(2 ** 32), "0,,1", "0 1,2", "0 0"):
             with self.subTest(bad=bad):
                 with self.assertRaises(ValueError):
                     mode0.parse_seeds(bad)
@@ -927,6 +928,11 @@ class EstimateTest(unittest.TestCase):
         # A warm number above the cold one counts as the cold one.
         self.assertAlmostEqual(mode0.estimate([(0.1, 0.4, 0.5, 0)], cfg, warm=True), mode0.WARM_FACTOR * 0.4)
         self.assertEqual(config(BR_MODE0_WARM="1", cpu_factor=2).cpu_factor, 2.0)
+        # The compile term (patched source the child compiles), warm model only.
+        one = [(0.1, 0.4, 0.05, 0)]
+        self.assertAlmostEqual(mode0.estimate(one, cfg, warm=True, compiled=2 ** 20),
+                               mode0.WARM_FACTOR * (0.3 + 0.05 + 0.05 + mode0.COMPILE_S_PER_MB))
+        self.assertAlmostEqual(mode0.estimate([(0.1, 0.4, None, 0)], cfg, warm=True, compiled=2 ** 20), 1.5 * 0.4)
 
     def test_children(self):
         cfg = config(cpu_factor=1)

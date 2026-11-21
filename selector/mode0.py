@@ -19,7 +19,9 @@ but edits to existing, importable sqlglot modules. Admitted, all of these at onc
     pinned source, so it is refused);
   * there is at least one call-time site or import-time file (`res.call_sites` /
     `res.import_files`). A patch whose only effect is an is/== swap that the type profile
-    proved a no-op, or that has no semantic change, has nothing to verify;
+    proved a no-op, or that has no semantic change, has nothing to verify (BR_MODE0_NOSITE=1
+    admits the first shape, see below);
+  * BR_MODE0_EXACT (default on): every hunk applies exactly where it says (see below);
   * every patched path is a plain module `sqlglot/<pkg>/.../<name>.py`: identifier path
     parts, a regular file (no symlink) inside a chain of regular packages (each directory
     holds `__init__.py`, none is a symlink), not a package `__init__.py`, not shadowed by a
@@ -75,6 +77,59 @@ Using the result: a test leaves S only if execute() reports exactly "passed" for
 child exited 0 without timing out and its line has no unsafe flag. Anything else, and any
 exception, leaves S exactly as it was. The child CPU of every attempt counts towards
 CPU_BUDGET. stdout is never written to.
+
+Exact application (BR_MODE0_EXACT, default on; =0 restores the patch.apply contract)
+-------------------------------------------------------------------------------------
+patch.apply searches +-200 lines for a hunk and, last, ignores line endings; `git apply` also
+accepts offsets. Where those place a hunk differently, the overlay is not the code the
+organisers test. So every hunk must apply at exactly its stated position with byte-identical
+context (`exact_apply`: no CR anywhere, counts match the @@ header, hunks in order, a hunk
+without trailing context ends at end of file, no pure insertion) and the result must be
+byte-for-byte res.patched (`exact_problem`); a file whose new bytes equal the pinned ones is
+refused (contract already refuses it: it is not in res.patched), as are mode-only entries.
+
+No-site shape (BR_MODE0_NOSITE=1)
+--------------------------------
+`res.call_sites` and `res.import_files` are both empty while the selection is not, with
+replica_ok true, exactly when every site of every file was a call-time is/== swap that maps.swap_is_noop proved (the
+selection is then imported(path) & typeprof_incomplete, plus untrusted and unmapped tests:
+commit_impact sets nontrivial). `_modified` stores res.patched[path] before analysing sites,
+so the complete new source of each such file is there, and replica_ok still means what it
+means for call sites. Other empty-site shapes are refused anyway: comment-only edits select
+only text readers (maps.reads -> replica_ok false); docstring, syntax, data, config, added,
+deleted or renamed files and inapplicable patches clear replica_ok; class-literal narrowings
+(BR_LITERAL_PROBE) put the file in import_files; a file whose new bytes equal the old is not
+in res.patched (contract refuses the set mismatch).
+
+Filesystem overlay (BR_MODE0_FS=1, BR_MODE0_FS_CPUS=2)
+------------------------------------------------------
+A test certified only in fs mode (it starts multiprocessing workers; eligibility "fs" block,
+audited mp_spawn/mp_fork flags allowed) cannot run in memory. When S contains one, the whole
+fs-eligible part of S is a second plan, run in a filesystem overlay of the patched tree
+(selector/overlay.py, built in tempfile.gettempdir(), removed in a finally; any build error
+keeps S) with execute(..., cpu_count=FS_CPUS). The plan with the higher expected net is run.
+fs eligibility needs the header to certify fs for this overlay.py (digest) and cpu_count, and
+the test's memory-mode order (batch) certification. Its estimate adds the overlay build+remove
+p90s and, for tests with children, their CPU beyond the engine's median startup (summed).
+
+Hash seeds (BR_MODE0_SEEDS="0,1" or "0 1"; empty = one production run, random seed)
+-------------------------------------------------------------------------------------
+One run per seed via execute(hash_seed=N), each later run only on the tests that passed every
+earlier one (none left: no more runs); a test leaves S only if it passed under every seed.
+A seed the file did not certify (a header run "seed<N>" with hash_seed N) refuses the file.
+The gate budgets len(seeds) runs of the whole set; the clock and the CPU budget are checked
+again before each later run, which is skipped (its tests kept) when it does not fit.
+
+CPU estimate (BR_MODE0_WARM=1)
+------------------------------
+See `estimate`. Validated on 52 sets (30 synthetic sets of the tests covering random sqlglot
+lines per the maps, 12 sample candidate sets, 10 fs sets; no outcome looked at), run on the
+precompiled pinned tree: actual/estimate with factor 1 had p90 0.99, max 1.08 (legacy model:
+p90 1.12, max 1.45). WARM_FACTOR 1.1 covers the observed maximum.
+
+Wall (all modes): every child's timeout is cut to the wall left before the replay budget
+(and the hard budget minus RESERVE), read from the clock just before that run, so no Mode 0
+child outlives started + min(BR_REPLICA_BUDGET, BR_BUDGET - RESERVE) (80 s by default).
 """
 
 import hashlib
@@ -98,8 +153,10 @@ OVERLAYS = ("memory",)
 BENIGN_FLAGS = frozenset({"rtracker"})
 # In fs mode, also the audited multiprocessing children (mode0_runner: verified at creation).
 FS_BENIGN_FLAGS = BENIGN_FLAGS | {"mp_spawn", "mp_fork"}
-# BR_MODE0_WARM=1: default CPU_FACTOR of the warm-batch estimate (see `estimate`).
-WARM_FACTOR = 1.3
+# BR_MODE0_WARM=1: default CPU_FACTOR of the warm-batch estimate and its compile term (see
+# `estimate`; measured on 52 sets, actual/estimate p90 0.99, max 1.08 with factor 1).
+WARM_FACTOR = 1.1
+COMPILE_S_PER_MB = 0.2
 MAX_SEED = 2 ** 32 - 1  # PYTHONHASHSEED range
 
 # name -> (env var, default, lower bound, upper bound)
@@ -133,11 +190,15 @@ class Refused(Exception):
 
 
 def parse_seeds(raw):
-    """BR_MODE0_SEEDS: "" -> [] (one production run, random hash seed), "0,1" -> [0, 1]."""
+    """BR_MODE0_SEEDS: "" -> [] (one production run, random hash seed), "0,1" or "0 1" ->
+    [0, 1] (commas and/or whitespace separate; tools/benchmark.py configs cannot hold commas)."""
     if raw is None or not raw.strip():
         return []
     seeds = []
-    for part in raw.split(","):
+    parts = raw.split(",")
+    if len(parts) == 1:
+        parts = raw.split()
+    for part in parts:
         part = part.strip()
         if not part.isdigit() or int(part) > MAX_SEED:
             raise ValueError(f"BR_MODE0_SEEDS={raw!r}")
@@ -505,7 +566,7 @@ def load_eligibility(path, tests, src_root, engine, overlay="memory", python=Non
 
 # ------------------------------------------------------------------------- CPU estimate
 
-def estimate(items, cfg, warm=False, startup_ref=None):
+def estimate(items, cfg, warm=False, startup_ref=None, compiled=0):
     """Estimated child CPU of ONE run of a set: the model below times
     cfg.cpu_factor. items: [(cpu, proc, warm_cpu or None, children)] per test, from the
     single-test certification runs of the overlay mode used (proc includes reaped children).
@@ -514,8 +575,10 @@ def estimate(items, cfg, warm=False, startup_ref=None):
     startup plus every test's cold CPU.
     warm True: max_i(proc_i - cpu_i) + sum_i w_i + max_i(cpu_i - w_i), w_i = the test's CPU
     inside its file batch ("bcpu"): one startup, every test warm, and the largest first-use
-    cost (cold minus warm) once; with the warm factor (cfg.cpu_factor). If a test of the set
-    has no warm number, the legacy model and factor (cfg.legacy_factor) are used. A set mixes files, so first-use costs of
+    cost (cold minus warm) once, plus COMPILE_S_PER_MB per MB of patched source (`compiled`
+    bytes: the child compiles every overlaid module instead of loading its pinned .pyc); with
+    the warm factor (cfg.cpu_factor). If a test of the set has no warm number, the legacy
+    model and factor (cfg.legacy_factor) are used. A set mixes files, so first-use costs of
     several files are paid; the factor covers that (validated, see the module docstring).
     Children (fs mode, tests that start multiprocessing workers): their CPU is in proc_i, not
     in the startup; it is taken as proc_i - cpu_i - startup_ref and summed over such tests."""
@@ -536,6 +599,8 @@ def estimate(items, cfg, warm=False, startup_ref=None):
             first_use = max(first_use, cpu - w)
         else:
             own += cpu
+    if warm:
+        own += COMPILE_S_PER_MB * compiled / 2 ** 20
     return factor * (startup + own + first_use + kids)
 
 
@@ -688,7 +753,7 @@ class Session:
         cfg = self.cfg
         return min(self.started + self.wall_budget, self.started + self.hard_budget - cfg.reserve) - self.clock()
 
-    def _plan(self, mode, R, selected, ms, elig):
+    def _plan(self, mode, R, selected, ms, elig, res):
         """(per-run estimate function, Decision) for running R in `mode`."""
         cfg = self.cfg
         table = elig.fs if mode == "fs" else elig.memory
@@ -697,7 +762,9 @@ class Session:
         def per_run(nums):
             items = [(*table[self.ids[n]], elig.warm.get(self.ids[n]),
                       elig.children.get(self.ids[n], 0) if mode == "fs" else 0) for n in nums]
-            return estimate(items, cfg, warm=cfg.warm, startup_ref=elig.startup)
+            return estimate(items, cfg, warm=cfg.warm, startup_ref=elig.startup, compiled=compiled)
+
+        compiled = sum(len(b) for b in res.patched.values())
 
         total = None
         if custom and R:
@@ -725,13 +792,13 @@ class Session:
         selected = set(selected)
         order = sorted(selected, key=lambda n: self.order.get(n, n))
         R = [n for n in order if self.ids.get(n) in elig.memory]
-        plans = [(R, *self._plan("memory", R, selected, ms, elig))]
+        plans = [(R, *self._plan("memory", R, selected, ms, elig, res))]
         if cfg.fs and elig.fs and not self.fs_broken:
             # A candidate certified only in fs mode (it starts processes): run the whole set in
             # an fs overlay, if that is worth more than the in-memory run of the rest.
             R_fs = [n for n in order if self.ids.get(n) in elig.fs]
             if any(self.ids[n] not in elig.memory for n in R_fs):
-                plans.append((R_fs, *self._plan("fs", R_fs, selected, ms, elig)))
+                plans.append((R_fs, *self._plan("fs", R_fs, selected, ms, elig, res)))
         admitted = [p for p in plans if p[2].admit]
         if not admitted:
             for _, _, d in plans:
