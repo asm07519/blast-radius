@@ -10,6 +10,7 @@ import contextlib
 import contextvars
 import os
 import posixpath
+import re
 import sys
 
 from . import pyast
@@ -23,6 +24,35 @@ except ImportError:  # pragma: no cover
 PYTEST_CONFIGS = {"pyproject.toml", "setup.cfg", "tox.ini", "pytest.ini"}
 ALWAYS_ALL = {"conftest.py", "sitecustomize.py", "usercustomize.py"}
 WATCHED = ("sqlglot/", "tests/", "sqlglotc/")
+
+
+# Calls that end or signal the test process itself. A test process that dies takes the reports
+# of unrelated tests with it, so which tests "fail" then depends on the harness, not on coverage.
+PROCESS_KILL = re.compile(
+    rb"\b(?:_exit|abort|killpg|raise_signal|pthread_kill|_sigsegv|_fatal_error)\s*\("
+    rb"|\bos\s*\.\s*(?:kill|exec[lv]p?e?|fork|forkpty)\s*\("
+    rb"|\bSIG(?:KILL|SEGV|ABRT|TERM|QUIT|BUS|ILL|FPE|STOP)\b"
+    rb"|\bfaulthandler\b"
+)
+
+
+def crash_guard():
+    """BR_CRASH_GUARD=1: a patch whose added Python lines name a process-killing call selects
+    every test. Read on every call so tests can toggle it within one process."""
+    return os.environ.get("BR_CRASH_GUARD") == "1"
+
+
+def _kills_process(fp):
+    path = fp.path or ""
+    if not path.endswith(".py"):
+        return None
+    for hunk in fp.hunks:
+        for tag, content in hunk.lines:
+            if tag == b"+":
+                found = PROCESS_KILL.search(content)
+                if found:
+                    return found.group(0).decode("ascii", "replace")
+    return None
 
 
 class Everything(Exception):
@@ -110,6 +140,11 @@ def commit_impact(file_patches, src_root, maps, import_refiner=None, import_prob
         for p in (fp.old_path, fp.new_path):
             if p is not None and not normal_path(p):
                 raise Everything(f"{p!r}: path not in normal form")
+    if crash_guard():
+        for fp in file_patches:
+            found = _kills_process(fp)
+            if found:
+                raise Everything(f"{fp.path}: adds a process-killing call ({found.strip()})")
     with source_root(src_root):
         return _commit_impact(file_patches, src_root, maps, import_refiner, import_probe)
 
