@@ -374,7 +374,7 @@ WHY = ["import: module/class statement changed", "import: statement inserted or 
        "import: class header, def header or other", "call: statement changed", "call: statement inserted or removed",
        "call: def signature or a compound-statement header", "file-level note (data readers, added/deleted file, ...)",
        "every test / unclassified / syntax"]
-FLAG = ["file is dialect-specific (dialects/x, parsers/, generators/, typing/) or outside sqlglot/", "file is shared sqlglot code"]
+FLAG = ["patch touches one file", "patch touches several files"]
 _SITE3 = re.compile(r"Site\((\w+), .*, ([^,()]*)\)\s*$")
 
 
@@ -429,7 +429,7 @@ def shared_flag(path):
     return 1
 
 
-def digit(record, selected_ids):
+def digit(record, selected_ids, nfiles=1):
     path, note = _largest(record)
     if VARIANT == "A":
         if T_MAX in selected_ids:
@@ -441,7 +441,7 @@ def digit(record, selected_ids):
         else:
             h = 3
         return h * 4 + file_group4(path)
-    return why8(note) * 2 + shared_flag(path)
+    return why8(note) * 2 + (1 if nfiles > 1 else 0)
 
 
 def digit_text(d, variant=None):
@@ -463,12 +463,14 @@ def add_payload(text, records):  # noqa: F811 - replaces build 2's report
 
     pending = list(records)
     by_cid = {}
+    nfiles = {}
     for cid, _ in answers:
         try:
             fps = parse((data / "commits" / f"{cid}.patch").read_bytes())
             key = tuple(sorted({p for fp in fps for p in (fp.old_path, fp.new_path) if p}))
         except Exception:  # noqa: BLE001
             continue
+        nfiles[cid] = len(key)
         for i, (paths, rec) in enumerate(pending):
             if paths == key:
                 by_cid[cid] = rec
@@ -483,7 +485,7 @@ def add_payload(text, records):  # noqa: F811 - replaces build 2's report
     expensive = sorted((c for c in costs if c[0] >= EXPENSIVE_MS), key=lambda c: (-c[0], c[1]))[:MAXN]
     fields = []
     for cost, cid, selected in expensive:
-        d = digit(by_cid.get(cid), selected)
+        d = digit(by_cid.get(cid), selected, nfiles.get(cid, 1))
         log(f"{cid}: cost {cost} ms, {len(selected)} tests, digit {d} = {digit_text(d)}")
         fields.append(d)
     fields += [0] * (MAXN - len(fields))
