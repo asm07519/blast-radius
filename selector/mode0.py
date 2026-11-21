@@ -21,6 +21,14 @@ but edits to existing, importable sqlglot modules. Admitted, all of these at onc
     `res.import_files`). A patch whose only effect is an is/== swap that the type profile
     proved a no-op, or that has no semantic change, has nothing to verify (BR_MODE0_NOSITE=1
     admits the first shape, see below);
+  * every file entry is a plain text edit as `git apply -p1` reads it: no `fp.odd` (a file
+    name git could read differently), no extended header line git acts on (`header_problem`:
+    old/new mode, new/deleted file mode, similarity/dissimilarity index, rename/copy
+    from/to, binary markers, an index line with a mode other than 100644/100755 or of any
+    other shape), and no hunk whose stated new position disagrees with its old one
+    (`patch.misplaced_hunk`: git searches for each hunk at its NEW line number in the partly
+    patched file, patch.apply and exact_apply at the old one). Unconditional, not only with
+    BR_MODE0_EXACT;
   * BR_MODE0_EXACT (default on): every hunk applies exactly where it says (see below);
   * every patched path is a plain module `sqlglot/<pkg>/.../<name>.py`: identifier path
     parts, a regular file (no symlink) inside a chain of regular packages (each directory
@@ -51,9 +59,13 @@ Eligibility (`load_eligibility`, file from tools/mode0_eligibility.py)
 ----------------------------------------------------------------------
 Loaded lazily, once. The whole file is refused (Mode 0 off for the run, one log line) when the
 schema is unknown, runner digest, tests identity or source digest differ, the Python
-major.minor (or implementation, or recorded machine architecture) differs from this
-interpreter, the configured engine (or, for unittest, pytest)
+major.minor (or implementation) differs from this interpreter, the header's `machine` is
+missing or differs from platform.machine(), the pytest version recorded in the header
+(engines.pytest.pytest) is missing or is not the one importable from the runner's site dirs
+(importlib.metadata on those dirs, pytest is not imported; none, several or unreadable also
+refuse), the configured engine (or, for unittest, pytest)
 was not certified, the file has no order (batch) or seed certification, or it does not parse.
+Any other exception while loading also turns Mode 0 off for the run (logged once, not retried).
 A test (looked up by id, never by number) is eligible when, for every certified engine, every
 certification run (production launch and each hash seed) passed with no flag other than the
 informational "rtracker", the batch run passed, and it is neither order sensitive nor an
@@ -70,8 +82,16 @@ certification runs (cpu_t: the test's own CPU, proc: its whole process). P is a 
 not a function of the patch. Then budgets: the run-wide Mode 0 CPU spent so far plus this
 estimate must fit CPU_BUDGET, and the wall left before the replay budget (and before the hard
 budget minus RESERVE) must cover the estimate plus MARGIN. The child's timeout is
-STARTUP_CAP + sum of per-test caps + MARGIN, cut to that remaining wall; per-test cap =
-max(CAP_MIN, CAP_MULT * seconds + CAP_ADD). Exceeding any cap keeps the tests.
+min(STARTUP_CAP + sum of per-test caps + MARGIN, max(TIMEOUT_K * est, TIMEOUT_FLOOR),
+CPU_BUDGET - spent + MARGIN, remaining wall), est = that run's CPU estimate; per-test cap =
+max(CAP_MIN, CAP_MULT * seconds + CAP_ADD). Exceeding any cap keeps every test of the run,
+including tests whose "passed" line was written before the kill. TIMEOUT_K 4 and
+TIMEOUT_FLOOR 3 s: on the sample's 6 admitted sets (4 runs each, warm estimate, precompiled
+tree) actual CPU / estimate was at most 1.13 and wall / estimate at most 1.99, so a run taking
+twice its measured CPU in wall on a loaded machine stays below 2.3 * est < 4 * est; every
+estimate there is below 0.81 s and every wall below 1.2 s, under the 3 s floor.
+A killed fs-mode run's pool workers die as orphans whose CPU no rusage of ours sees, so a
+fs run that did not exit 0 by itself is charged its measured CPU + FS_CPUS * its wall.
 
 Using the result: a test leaves S only if execute() reports exactly "passed" for it, the
 child exited 0 without timing out and its line has no unsafe flag. Anything else, and any
@@ -91,12 +111,16 @@ refused (contract already refuses it: it is not in res.patched), as are mode-onl
 No-site shape (BR_MODE0_NOSITE=1)
 --------------------------------
 `res.call_sites` and `res.import_files` are both empty while the selection is not, with
-replica_ok true, exactly when every site of every file was a call-time is/== swap that maps.swap_is_noop proved (the
-selection is then imported(path) & typeprof_incomplete, plus untrusted and unmapped tests:
-commit_impact sets nontrivial). `_modified` stores res.patched[path] before analysing sites,
-so the complete new source of each such file is there, and replica_ok still means what it
-means for call sites. Other empty-site shapes are refused anyway: comment-only edits select
-only text readers (maps.reads -> replica_ok false); docstring, syntax, data, config, added,
+replica_ok true, when every site of every file was a call-time is/== swap that
+maps.swap_is_noop proved (the selection is then imported(path) & typeprof_incomplete, plus
+untrusted and unmapped tests: commit_impact sets nontrivial), possibly together with files
+whose only change is a comment that no mapped test reads as text (such a file has no site
+and keeps replica_ok true), or of such comment-only files alone if anything is selected.
+`_modified` stores res.patched[path] before analysing sites, so the complete new source of
+every changed file, comment-only ones included, is there (contract also requires the patched
+paths to be exactly the patch's files), and replica_ok still means what it means for call
+sites. Other empty-site shapes are refused anyway: comment edits in files a mapped test reads
+as text clear replica_ok (maps.reads); docstring, syntax, data, config, added,
 deleted or renamed files and inapplicable patches clear replica_ok; class-literal narrowings
 (BR_LITERAL_PROBE) put the file in import_files; a file whose new bytes equal the old is not
 in res.patched (contract refuses the set mismatch).
@@ -137,6 +161,7 @@ import importlib.machinery
 import json
 import math
 import os
+import re
 import sys
 import tempfile
 import time
@@ -144,6 +169,7 @@ import time
 from . import mode0_runner as m0
 from . import overlay as ovl
 from . import schedule
+from .patch import misplaced_hunk
 from .replica import overlay_spec
 
 SCHEMA = "br-mode0-eligibility/1"
@@ -175,6 +201,9 @@ TUNABLES = {
     "margin": ("BR_MODE0_MARGIN", 2.0, 0, 600),
     "reserve": ("BR_MODE0_RESERVE", 10.0, 0, 600),
     "fs_cpus": ("BR_MODE0_FS_CPUS", 2, 1, 1024),
+    # Child timeout tied to the run's CPU estimate: max(TIMEOUT_K * estimate, TIMEOUT_FLOOR).
+    "timeout_k": ("BR_MODE0_TIMEOUT_K", 4.0, 1, 1e3),
+    "timeout_floor": ("BR_MODE0_TIMEOUT_FLOOR", 3.0, 0.1, 600),
 }
 # Switches, each "1" = on. Defaults off except EXACT (a contract fix; "0" turns it off for A/B).
 SWITCHES = {
@@ -279,6 +308,29 @@ def _module_problem(path, src_root):
     return None
 
 
+# Extended header lines git apply acts on (apply.c parse_git_header) and binary markers: any of
+# them makes the entry more than a text edit of the pinned file, whatever its hunks say.
+HEADER_REFUSED = (b"old mode", b"new mode", b"new file mode", b"deleted file mode",
+                  b"similarity index", b"dissimilarity index", b"rename from", b"rename to",
+                  b"rename old", b"rename new", b"copy from", b"copy to",
+                  b"Binary files", b"GIT binary patch", b"literal ", b"delta ")
+# "index <old>..<new>[ <mode>]": git takes the mode of a modification from it and writes the
+# result with that mode (120000: a symlink whose target is the new text), so only the regular
+# file modes are admitted, and a line git would read differently from this one is refused.
+_INDEX = re.compile(rb"index [0-9a-f]{4,64}\.\.[0-9a-f]{4,64}(?: 100644| 100755)?\n?")
+
+
+def header_problem(header):
+    """None when the extended header lines of a file entry (FilePatch.header, bytes) say
+    nothing but "this is a text edit of a regular file", else the reason."""
+    for line in header:
+        if line.startswith(HEADER_REFUSED):
+            return f"header line {line[:40]!r}"
+        if line.startswith(b"index") and not _INDEX.fullmatch(line):
+            return f"index line {line[:60]!r}"
+    return None
+
+
 def contract(fps, res, src_root, allow_no_site=False):
     """None when the in-memory overlay represents the patch faithfully, else the reason.
 
@@ -299,6 +351,13 @@ def contract(fps, res, src_root, allow_no_site=False):
             return "mode-only entry"
         if fp.binary or getattr(fp, "copy", False):
             return "binary/copy entry"
+        if fp.odd:
+            return f"{fp.path}: {fp.odd}"
+        problem = header_problem(fp.header)
+        if problem:
+            return f"{fp.path}: {problem}"
+        if misplaced_hunk(fp) is not None:
+            return f"{fp.path}: a hunk's new position disagrees with its old one (git apply looks there)"
         if fp.old_path is None or fp.new_path is None or fp.old_path != fp.new_path:
             return "added/deleted/renamed file"
         paths.append(fp.old_path)
@@ -481,9 +540,47 @@ def _p90(block):
     return float(value) if _number(value) else None
 
 
-def load(path, tests, src_root, engine, python=None, seeds=(), fs_cpus=None):
+def site_pytest_version(site):
+    """The version of the one pytest distribution found in the `site` directories (what the
+    runner, started with -I -S and these on sys.path, would import), read with importlib.metadata
+    without importing pytest; None when there is none, several versions, or it cannot be read."""
+    import importlib.metadata as md
+
+    try:
+        versions = set()
+        for dist in md.distributions(name="pytest", path=list(site)):
+            meta = dist.metadata
+            versions.add(meta.get("Version") if meta is not None else None)
+    except Exception:  # noqa: BLE001 - a broken dist-info: cannot be determined
+        return None
+    if len(versions) != 1:
+        return None
+    (version,) = versions
+    return version if isinstance(version, str) and version else None
+
+
+def pytest_problem(header, site):
+    """None when the pytest version the file was certified with (header engines.pytest.pytest)
+    is the one importable from `site`, else the reason. Both engines need it: unittest is
+    eligible only with pytest agreement."""
+    engines = header.get("engines")
+    block = engines.get("pytest") if isinstance(engines, dict) else None
+    recorded = block.get("pytest") if isinstance(block, dict) else None
+    if not isinstance(recorded, str) or not recorded:
+        return "no recorded pytest version (header engines.pytest.pytest)"
+    found = site_pytest_version(site)
+    if found is None:
+        return f"pytest version in {list(site)} cannot be determined"
+    if found != recorded:
+        return f"pytest {recorded} certified, {found} installed"
+    return None
+
+
+def load(path, tests, src_root, engine, python=None, seeds=(), fs_cpus=None, site=None):
     """Eligibility for `engine`; raises Refused (also for a hash seed the file did not
-    certify). fs_cpus None: fs mode is not wanted (Eligibility.fs stays empty)."""
+    certify). fs_cpus None: fs mode is not wanted (Eligibility.fs stays empty). site: the
+    runner's site-packages dirs; the pytest version importable there must be the certified one
+    (None skips that check: Session always passes its dirs)."""
     python = tuple(python or sys.version_info[:2])
     data = _read(path)
     if not isinstance(data, dict) or data.get("schema") != SCHEMA:
@@ -501,9 +598,15 @@ def load(path, tests, src_root, engine, python=None, seeds=(), fs_cpus=None):
     impl = header.get("implementation")
     if impl is not None and impl != sys.implementation.name:
         raise Refused(f"implementation {impl}")
+    import platform  # here: with Mode 0 off the selector imports nothing new
+
     machine = header.get("machine")
-    if machine is not None and hasattr(os, "uname") and machine != os.uname().machine:
-        raise Refused(f"certified on {machine}")  # e.g. a Mac file on the linux/amd64 server
+    if not machine or machine != platform.machine():
+        raise Refused(f"certified on machine {machine!r}, not {platform.machine()!r}")  # e.g. a Mac file
+    if site is not None:
+        problem = pytest_problem(header, site)
+        if problem:
+            raise Refused(problem)
     if header.get("runner_digest") != m0.runner_digest():
         raise Refused("runner digest differs")
     if header.get("tests_identity") != m0.tests_identity(tests):
@@ -728,15 +831,18 @@ class Session:
         if self._elig is None and self.off is None:
             cfg = self.cfg
             try:
-                self._elig = load(cfg.elig_path, self.tests, self.src_root, cfg.engine,
-                                  python=self.python, seeds=cfg.seeds,
-                                  fs_cpus=cfg.fs_cpus if cfg.fs else None)
-                self.log(f"mode0: {len(self._elig.memory)} {cfg.engine}-eligible tests")
+                elig = load(cfg.elig_path, self.tests, self.src_root, cfg.engine,
+                            python=self.python, seeds=cfg.seeds,
+                            fs_cpus=cfg.fs_cpus if cfg.fs else None, site=self.site)
+                self.log(f"mode0: {len(elig.memory)} {cfg.engine}-eligible tests")
                 if cfg.fs:
-                    self.log(f"mode0 fs: {len(self._elig.fs)} eligible tests"
-                             + (f" (fs off: {self._elig.fs_why})" if self._elig.fs_why else ""))
+                    self.log(f"mode0 fs: {len(elig.fs)} eligible tests"
+                             + (f" (fs off: {elig.fs_why})" if elig.fs_why else ""))
+                self._elig = elig
             except Refused as why:
                 self._disable(str(why))
+            except Exception as error:  # noqa: BLE001 - once: never retried on later commits
+                self._disable(f"eligibility not loaded ({type(error).__name__}: {error})")
         return self._elig
 
     def verify(self, cid, selected, res, fps, ms, overlay="memory"):
@@ -847,6 +953,16 @@ class Session:
                 self.fs_broken = True
             self.spent += time.process_time() - t1
 
+    def _timeout(self, caps, est, avail):
+        """The child's timeout: the per-test caps (STARTUP_CAP + sum of caps + MARGIN), cut to
+        max(TIMEOUT_K * est, TIMEOUT_FLOOR) (est: this run's CPU estimate), to the CPU budget
+        left + MARGIN and to the wall left. A timeout keeps every test of the run."""
+        cfg = self.cfg
+        return min(cfg.startup_cap + sum(caps) + cfg.margin,
+                   max(cfg.timeout_k * est, cfg.timeout_floor),
+                   cfg.cpu_budget - self.spent + cfg.margin,
+                   avail)
+
     def _runs(self, cid, R, spec, d, per_run, avail, cpu_count=None):
         """Run R once per hash seed (cfg.runs), each later run only on the tests that passed
         every earlier one; the tests that passed them all (dropped from the selection)."""
@@ -865,7 +981,7 @@ class Session:
                     self.log(f"{cid}: mode0 seed {seed} skipped (wall budget: {avail:.1f}s left); kept")
                     return set()
             caps = [round(cfg.cap(self.seconds[n]), 3) for n in alive]
-            timeout = min(cfg.startup_cap + sum(caps) + cfg.margin, avail)
+            timeout = self._timeout(caps, est, avail)
             run_spec = dict(spec, tests=[{"id": self.ids[n], "cap": cap} for n, cap in zip(alive, caps)])
             kwargs = {}
             if seed is not None:
@@ -881,6 +997,12 @@ class Session:
             cpu = out.get("cpu", 0.0) if isinstance(out, dict) else None
             if not _number(cpu):
                 cpu = est  # unknown: charge the estimate
+            if cpu_count is not None and not _clean(out):
+                # A killed fs-mode child leaves its pool workers to be killed as orphans: their
+                # CPU is in no rusage of ours (wait4 and RUSAGE_CHILDREN only see reaped
+                # descendants), so charge an upper bound, cpu_count workers for the whole run.
+                wall = out.get("wall") if isinstance(out, dict) else None
+                cpu += cpu_count * (wall if _number(wall) else timeout)
             self.spent += cpu
             passed = _passed(out, [self.ids[n] for n in alive])
             survivors = [n for n in alive if self.ids[n] in passed]
@@ -894,7 +1016,7 @@ class Session:
             seed_tag = "" if seed is None else f" seed={seed} est={est:.3f}"
             self.log(f"{cid}: mode0{tag} admit {d.numbers()}{seed_tag} -> {what} {len(survivors)}/{len(alive)} "
                      f"{dict(sorted(counts.items()))} rc={info.get('returncode')} "
-                     f"timeout={info.get('timed_out')} cpu={cpu:.3f}s wall={wall:.2f}s spent={self.spent:.2f}s")
+                     f"timeout={info.get('timed_out')} limit={timeout:.1f}s cpu={cpu:.3f}s wall={wall:.2f}s spent={self.spent:.2f}s")
             if self.spent >= cfg.cpu_budget:
                 self._disable(f"cpu budget spent ({self.spent:.2f}s)")
             alive = survivors
@@ -906,9 +1028,15 @@ class Session:
         return set(alive)
 
 
+def _clean(out):
+    """The child exited 0 by itself (not killed on timeout)."""
+    return isinstance(out, dict) and out.get("returncode") == 0 and out.get("timed_out") is False
+
+
 def _passed(out, ids):
-    """Ids with exactly "passed" from a clean, complete, unflagged run."""
-    if not isinstance(out, dict) or out.get("returncode") != 0 or out.get("timed_out") is not False:
+    """Ids with exactly "passed" from a clean, complete, unflagged run. A run that timed out
+    gives none, also for tests whose "passed" line was written before the kill."""
+    if not _clean(out):
         return set()
     outcomes = out.get("outcomes")
     if not isinstance(outcomes, dict):
