@@ -8,9 +8,9 @@
 Every test runs alone in a fresh Mode 0 runner process on the UNPATCHED source (patched = {}),
 launched exactly as the selector launches it (selector.mode0_runner.execute):
 
-    run "iso"     PY -I -S selector/replica_runner.py spec.json     (random hash seed: -I ignores
-                  PYTHONHASHSEED; this is the production launch)
-    run "seedN"   PY -s -P -S selector/replica_runner.py spec.json  with every PYTHON* variable
+    run "iso"     PY -I -S -B selector/replica_runner.py spec.json     (random hash seed: -I
+                  ignores PYTHONHASHSEED; this is the production launch, m0.ISO_FLAGS)
+    run "seedN"   PY -s -P -S -B selector/replica_runner.py spec.json  with every PYTHON* variable
                   removed from the environment and PYTHONHASHSEED=N (-s -P are -I minus -E)
 
 A test is eligible for an engine when every run of that engine reached it and reported
@@ -45,6 +45,8 @@ from selector import mode0_runner as m0  # noqa: E402
 
 SCHEMA = "br-mode0-eligibility/1"
 STARTUP_CAP = 60.0
+# Outcomes the tool records for runs it did not make; never compared between engines/modes.
+SYNTHETIC = ("not_reached", "skipped_after_spawn", "skipped_after_failure")
 
 
 def cap_for(seconds):
@@ -296,7 +298,7 @@ def main():
             info["why"] = why
             entry[engine] = info
             iso[engine] = lines["iso"].get("line") or lines["iso"]["o"]
-        if len(engines) == 2 and all(iso.get(e) not in (None, "not_reached") for e in engines) \
+        if len(engines) == 2 and all(iso.get(e) not in (None, *SYNTHETIC) for e in engines) \
                 and iso["unittest"] != iso["pytest"]:
             disagreements.append({"id": tid, "unittest": iso["unittest"], "pytest": iso["pytest"]})
             entry["disagree"] = True
@@ -309,6 +311,8 @@ def main():
                 ln = batch.get((tid, engine), {"o": "not_reached"})
                 b[engine] = ln.get("line") or ln["o"]
                 alone = entry[engine]["o"]["iso"]
+                if alone in SYNTHETIC:
+                    continue
                 if b[engine] in ("notrun", "timeout", "missing", "not_reached", "unproven"):
                     if entry[engine]["ok"]:
                         entry[engine]["ok"] = False

@@ -9,7 +9,8 @@ Parent side (stdlib only, cheap to import: no unittest, no pytest):
 
 Child side: replica_runner.py dispatches a spec with "kind": "mode0" to run().
 
-Spec (JSON file, the only argument of `python -I -S selector/replica_runner.py <spec.json>`):
+Spec (JSON file, the only argument of `python -I -S -B selector/replica_runner.py <spec.json>`,
+see launch_argv; -B keeps multiprocessing children from writing .pyc files into src):
     {"kind": "mode0",
      "src": "<abs sqlglot root>",
      "patched": {module: [abs path, base64 source]},   # may be empty (eligibility runs)
@@ -70,8 +71,10 @@ EXIT_OK, EXIT_TIMEOUT, EXIT_ABORT, EXIT_BADSPEC = 0, 3, 4, 2
 # Interpreter flags. "iso" is what the selector uses (-I ignores PYTHONHASHSEED, so the hash
 # seed is random). "seeded" is the closest equivalent that honours PYTHONHASHSEED: -s -P are
 # the parts of -I other than -E, and the environment is scrubbed of every other PYTHON* var.
-ISO_FLAGS = ("-I", "-S")
-SEEDED_FLAGS = ("-s", "-P", "-S")
+# -B: the runner itself never writes bytecode (sys.dont_write_bytecode), but multiprocessing
+# children only inherit the startup flag, and they would write .pyc files into the source tree.
+ISO_FLAGS = ("-I", "-S", "-B")
+SEEDED_FLAGS = ("-s", "-P", "-S", "-B")
 
 
 # --------------------------------------------------------------------------- parent side

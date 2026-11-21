@@ -218,6 +218,18 @@ FILES = {
             def test_after(self):
                 pass
     ''',
+    "tests/test_mp.py": '''
+        import multiprocessing
+        import unittest
+
+        from pkg import core
+
+
+        class TestMP(unittest.TestCase):
+            def test_spawn_pool(self):
+                with multiprocessing.get_context("spawn").Pool(1) as pool:
+                    self.assertEqual(pool.apply(core.value), 1)
+    ''',
     "tests/test_state.py": '''
         import os
         import sys
@@ -377,6 +389,17 @@ class EngineMixin:
         self.assertEqual(res["outcomes"][tid], "flagged")
         self.assertEqual(res["outcomes"][B + "test_pass"], "passed")
         self.assertNotIn("spawn", res["lines"][B + "test_pass"]["flags"])
+
+    def test_multiprocessing_spawn_flag_and_no_bytecode(self):
+        # A spawn-context child imports pkg.core from disk (unpatched): the pass is not evidence.
+        tid = "tests/test_mp.py::TestMP::test_spawn_pool"
+        res = self.run_ids([tid])
+        self.assertEqual(res["lines"][tid]["outcome"], "passed")
+        self.assertIn("spawn", res["lines"][tid]["flags"])
+        self.assertEqual(res["outcomes"][tid], "flagged")
+        written = [os.path.join(r, n) for r, _, names in os.walk(self.repo.root) for n in names
+                   if n.endswith(".pyc")]
+        self.assertEqual(written, [])
 
     def test_prints_megabytes(self):
         tid = B + "test_print"
@@ -565,10 +588,10 @@ class TestParentSide(unittest.TestCase):
 
     def test_launch_argv(self):
         argv, env = m0.launch_argv("/x/spec.json", python="/py")
-        self.assertEqual(argv, ["/py", "-I", "-S", m0.REPLICA_RUNNER, "/x/spec.json"])
+        self.assertEqual(argv, ["/py", "-I", "-S", "-B", m0.REPLICA_RUNNER, "/x/spec.json"])
         argv, env = m0.launch_argv("/x/spec.json", python="/py", hash_seed=1,
                                    env={"PYTHONPATH": "/evil", "PYTHONHASHSEED": "7", "HOME": "/h"})
-        self.assertEqual(argv, ["/py", "-s", "-P", "-S", m0.REPLICA_RUNNER, "/x/spec.json"])
+        self.assertEqual(argv, ["/py", "-s", "-P", "-S", "-B", m0.REPLICA_RUNNER, "/x/spec.json"])
         self.assertEqual(env, {"PYTHONHASHSEED": "1", "HOME": "/h"})
 
     def test_digests(self):
