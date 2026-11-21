@@ -24,15 +24,18 @@ _COOKIE = re.compile(rb"^[ \t\f]*#.*?coding[:=][ \t]*([-\w.]+)")
 
 
 class Site:
-    __slots__ = ("kind", "lines", "names", "why", "class_path", "literal")
+    __slots__ = ("kind", "lines", "names", "why", "class_path", "literal", "proof")
 
-    def __init__(self, kind, lines=(), names=(), why="", class_path=None, literal=False):
+    def __init__(self, kind, lines=(), names=(), why="", class_path=None, literal=False, proof=None):
         self.kind = kind
         self.lines = set(lines)
         self.names = set(names)
         self.why = why
         self.class_path = class_path  # enclosing classes from module level, for class-body changes
         self.literal = literal  # the change only swaps literal values, so running it cannot raise
+        # (line, col, end_line, old_op, new_op) when the only difference is one comparison
+        # swapping `is`<->`==` or `is not`<->`!=`; the selector may prove it a no-op.
+        self.proof = proof
 
     def __repr__(self):
         ls = sorted(self.lines)
@@ -214,19 +217,32 @@ class Analysis:
                 self.inserted(n_part[idx], scope, olds, i1 + k, header, at_start=(i1 + k == 0 and j1 + idx == 0))
 
     def _neighbour_lines(self, olds, index, header):
+        """Lines that run whenever control reaches position `index` of this body.
+
+        The previous statement (it ran, so control moved on) and the next one. The block
+        header is used only when there is neither: a def line runs where the function is
+        defined, not where it is called, so it would over-select.
+        """
         lines = set()
         if index > 0:
             lines |= entry_lines(olds[index - 1])
-        elif header:
-            lines |= header
         if index < len(olds):
             lines |= entry_lines(olds[index])
+        if not lines and header:
+            lines |= header
         return lines
 
-    def _site_for_scope(self, scope, lines, names, why):
+    def _own_lines(self, o, lines, olds, index, header):
+        """A changed statement runs exactly when one of its own lines runs, unless it
+        compiles to no line event (pass, global, nonlocal, a bare constant)."""
+        if isinstance(o, (ast.Pass, ast.Global, ast.Nonlocal)) or _is_const_expr(o):
+            return lines | self._neighbour_lines(olds, index, header)
+        return lines
+
+    def _site_for_scope(self, scope, lines, names, why, proof=None):
         kind = scope[0]
         if kind == "function":
-            self.sites.append(Site("call", lines, why=why))
+            self.sites.append(Site("call", lines, why=why, proof=proof))
         else:
             self.sites.append(Site("import", lines, names, why=why))
 
@@ -238,7 +254,7 @@ class Analysis:
         if isinstance(o, ast.Pass):
             return
         if scope[0] == "function":
-            self.sites.append(Site("call", span(o) | self._neighbour_lines(olds, index, header), why="stmt removed"))
+            self.sites.append(Site("call", self._own_lines(o, span(o), olds, index, header), why="stmt removed"))
         else:
             self.sites.append(Site("import", span(o), bound_names(o), why="stmt removed",
                                    class_path=_class_path(scope), literal=_literal_stmt(o)))
@@ -280,9 +296,13 @@ class Analysis:
         compound = _COMPOUND.get(type(o))
         if compound is not None:
             hdr_fields, body_fields = compound
-            if any(dump_field(o, f) != dump_field(n, f) for f in hdr_fields):
-                self._site_for_scope(scope, entry_lines(o) | self._neighbour_lines(olds, index, header),
-                                     bound_names(o), f"{type(o).__name__} header")
+            changed_hdr = [f for f in hdr_fields if dump_field(o, f) != dump_field(n, f)]
+            if changed_hdr:
+                proof = None
+                if scope[0] == "function" and len(changed_hdr) == 1:
+                    proof = cmp_swap(getattr(o, changed_hdr[0]), getattr(n, changed_hdr[0]))
+                self._site_for_scope(scope, entry_lines(o), bound_names(o), f"{type(o).__name__} header",
+                                     proof=proof)
             for f in body_fields:
                 ob, nb = getattr(o, f), getattr(n, f)
                 block_hdr = entry_lines(o)
@@ -304,7 +324,8 @@ class Analysis:
                 self.sites.append(Site("doc", span(o), why="docstring changed"))
             return
         if scope[0] == "function":
-            self.sites.append(Site("call", span(o) | self._neighbour_lines(olds, index, header), why="stmt changed"))
+            self.sites.append(Site("call", self._own_lines(o, span(o), olds, index, header), why="stmt changed",
+                                   proof=cmp_swap(o, n)))
             return
         points = []
         _diff_points(o, n, None, points)
@@ -336,6 +357,47 @@ class Analysis:
             elif deco_changed or name_changed or tp_changed or not _only_constant_defaults(o.args, n.args):
                 self.sites.append(Site("import", _header_lines(o), {o.name, n.name}, why=f"def {o.name} header"))
         self.diff_body(o.body, n.body, ("function", o), _header_lines(o))
+
+
+_SWAPS = {(ast.Is, ast.Eq), (ast.Eq, ast.Is), (ast.IsNot, ast.NotEq), (ast.NotEq, ast.IsNot)}
+
+
+def cmp_swap(a, b):
+    """(line, col, end_line, old_op, new_op) if a and b differ only by one is/== or is not/!= swap."""
+    found = []
+
+    def walk(x, y):
+        if type(x) is not type(y):
+            return False
+        if isinstance(x, ast.Compare) and len(x.ops) == 1 and len(y.ops) == 1 \
+                and type(x.ops[0]) is not type(y.ops[0]):
+            if (type(x.ops[0]), type(y.ops[0])) in _SWAPS and dump(x.left) == dump(y.left) \
+                    and dump(x.comparators[0]) == dump(y.comparators[0]):
+                found.append((x.lineno, x.col_offset, x.end_lineno, type(x.ops[0]).__name__,
+                              type(y.ops[0]).__name__))
+                return True
+            return False
+        if isinstance(x, ast.AST):
+            for f in x._fields:
+                va, vb = getattr(x, f, None), getattr(y, f, None)
+                if isinstance(va, list):
+                    if not isinstance(vb, list) or len(va) != len(vb):
+                        return False
+                    if not all(walk(p, q) for p, q in zip(va, vb)):
+                        return False
+                elif isinstance(va, ast.AST) or isinstance(vb, ast.AST):
+                    if va is None or vb is None or not walk(va, vb):
+                        return False
+                elif va != vb or type(va) is not type(vb):
+                    return False
+            return True
+        return x == y
+
+    try:
+        ok = walk(a, b)
+    except RecursionError:
+        return None
+    return found[0] if ok and len(found) == 1 else None
 
 
 def _class_path(scope):

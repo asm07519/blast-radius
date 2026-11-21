@@ -150,6 +150,39 @@ def class_literal_mutation(rng, src):
     return None
 
 
+def cmp_swap_mutation(rng, src):
+    """Swap is <-> == or is not <-> != at one comparison inside a function."""
+    tree = ast.parse(src)
+    funcs = [n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    cands = []
+    for f in funcs:
+        for n in ast.walk(f):
+            if isinstance(n, ast.Compare) and len(n.ops) == 1 and \
+                    isinstance(n.ops[0], (ast.Is, ast.IsNot, ast.Eq, ast.NotEq)) and \
+                    n.left.end_lineno == n.comparators[0].lineno:
+                cands.append(n)
+    rng.shuffle(cands)
+    lines = src.splitlines(keepends=True)
+    swap = {"is not": "!=", "is": "==", "==": "is", "!=": "is not"}
+    for n in cands[:20]:
+        line = lines[n.left.end_lineno - 1]
+        enc = line.encode("utf-8")
+        a, b = n.left.end_col_offset, n.comparators[0].col_offset
+        mid = enc[a:b].decode("utf-8")
+        op = mid.strip()
+        if op not in swap:
+            continue
+        new_line = (enc[:a] + mid.replace(op, swap[op], 1).encode() + enc[b:]).decode("utf-8")
+        new = "".join(lines[: n.left.end_lineno - 1] + [new_line] + lines[n.left.end_lineno:])
+        try:
+            ast.parse(new)
+        except SyntaxError:
+            continue
+        if ast_differs(src, new):
+            return new
+    return None
+
+
 def comment_mutation(rng, src, inline=False):
     lines = src.splitlines(keepends=True)
     i = rng.randrange(len(lines))
@@ -270,7 +303,7 @@ def main():
 
     kinds = [("code", 40), ("fixture", 15), ("comment", 8), ("comment_inline", 4), ("multi", 8),
              ("delete_line", 6), ("docstring", 3), ("test_edit", 5), ("syntax", 3), ("docs", 2),
-             ("new_file", 2), ("delete_file", 2), ("rename_file", 1), ("config", 1), ("class_literal", 10)]
+             ("new_file", 2), ("delete_file", 2), ("rename_file", 1), ("config", 1), ("class_literal", 10), ("cmp_swap", 6)]
     if args.kinds:
         keep = set(args.kinds.split(","))
         kinds = [k for k in kinds if k[0] in keep]
@@ -281,6 +314,11 @@ def main():
             f = rng.choices(src_files, weights)[0]
             old = read(repo, f)
             new = token_mutation(rng, old)
+            return diff(f, old, new) if new else None
+        if kind == "cmp_swap":
+            f = rng.choices(src_files, weights)[0]
+            old = read(repo, f)
+            new = cmp_swap_mutation(rng, old)
             return diff(f, old, new) if new else None
         if kind == "class_literal":
             f = rng.choices(src_files, weights)[0]

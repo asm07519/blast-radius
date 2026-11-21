@@ -65,6 +65,9 @@ def expand(data):
         "names": data.get("names", {}),
         "dynamic": data.get("dynamic", []),
         "class_info": data.get("class_info", {}),
+        "typeprof": data.get("typeprof", {}),
+        "typeprof_incomplete": data.get("typeprof_incomplete", None),
+        "subtests": data.get("subtests", {}),
         "sets": sets,
     }
 
@@ -78,6 +81,8 @@ def main():
     ap.add_argument("--commit", default="eb11aec4be8cb2122afe713a4816662c3f0fb2fa")
     ap.add_argument("--static", default=None, help="tools/static_index.py output")
     ap.add_argument("--classes", default=None, help="tools/class_info.py output")
+    ap.add_argument("--typeprof", default=None, help="tools/build_typeprof.py output")
+    ap.add_argument("--subtests", action="append", default=[], help="tools/subtest_cov.py output(s)")
     args = ap.parse_args()
 
     tests = json.load(open(args.tests))
@@ -223,8 +228,35 @@ def main():
         for key, info in json.load(open(args.classes)).items():
             class_info[key] = (bool(info["trackable"]), tuple(info["mro"]))
 
+    typeprof = dict(base["typeprof"]) if base is not None else {}
+    typeprof_incomplete = base["typeprof_incomplete"] if base is not None else None
+    if args.typeprof:
+        tp = json.load(open(args.typeprof))
+        typeprof = {site: tuple(tuple(r) for r in rows) for site, rows in tp["sites"].items()}
+        typeprof_incomplete = 0
+        for tid in tp["incomplete"]:
+            if tid in index:
+                typeprof_incomplete |= 1 << index[tid]
+        # tests the profiler never saw are incomplete too
+        for i in range(len(ids)):
+            if not (mapped >> i & 1):
+                typeprof_incomplete |= 1 << i
+
+    subtests = dict(base["subtests"]) if base is not None else {}
+    for fn in args.subtests:
+        st = json.load(open(fn))
+        if not st.get("passed"):
+            print(f"skip subtests of {st['test']}: it did not pass", file=sys.stderr)
+            continue
+        value_of = lambda params: next(iter(params.values())) if params else ""
+        subtests[st["test"]] = {"outside": st["outside"],
+                                "windows": [[value_of(p), files] for p, files in st["windows"]]}
+
     data = {
         "format": FORMAT,
+        "subtests": subtests,
+        "typeprof": typeprof,
+        "typeprof_incomplete": typeprof_incomplete,
         "class_users": {k: sidx(v) for k, v in class_users.items()},
         "classes_at_import": tuple(sorted(classes_at_import)),
         "call_at_import": tuple(sorted(call_at_import)),

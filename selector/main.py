@@ -10,7 +10,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import schedule
+from . import replica, schedule
 from .impact import Everything, commit_impact, refine_class_literal
 from .maps import Maps
 from .patch import parse
@@ -33,6 +33,27 @@ def bits_to_numbers(bits, translate):
             out.append(num)
         bits ^= low
     return out
+
+
+def prune_with_replicas(cid, selected, res, maps, by_id, ms, src_root):
+    for test_id in replica.REPLICAS:
+        num = by_id.get(test_id)
+        info = maps.subtests.get(test_id)
+        if num is None or num not in selected or info is None:
+            continue
+        values = replica.affected_windows(info, res.call_sites, res.import_files)
+        if not values or len(values) > 12:
+            continue
+        rest = selected - {num}
+        saving = schedule.cost(schedule.split(selected, ms), ms) - schedule.cost(schedule.split(rest, ms), ms)
+        if saving < 1500:
+            continue
+        if replica.run(test_id, values, res.patched, src_root):
+            log(f"{cid}: {test_id.split('::')[-1]} passes on the patched code for {sorted(values)}; dropped")
+            selected = rest
+        else:
+            log(f"{cid}: {test_id.split('::')[-1]} replica did not pass; kept")
+    return selected
 
 
 def main(argv=None):
@@ -86,6 +107,8 @@ def main(argv=None):
             selected = set(bits_to_numbers(res.bits, translate))
             if res.nontrivial:
                 selected.update(unmapped)
+            if res.replica_ok and (res.call_sites or res.import_files) and os.environ.get("BR_NO_REPLICA") != "1":
+                selected = prune_with_replicas(cid, selected, res, maps, by_id, ms, src_root)
             answers[cid] = sorted(selected)
             if verbose:
                 log(f"{cid}: {len(selected)} tests; " + " | ".join(res.notes[:6]))

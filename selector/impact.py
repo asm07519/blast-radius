@@ -31,6 +31,11 @@ class Result:
         self.bits = 0
         self.nontrivial = False
         self.notes = []
+        # For subtest replicas: every change is a call-time edit to a sqlglot module.
+        self.replica_ok = True
+        self.call_sites = []  # (path, lines)
+        self.import_files = set()  # sqlglot modules changed at import time
+        self.patched = {}  # path -> new source bytes
 
     def add(self, bits, note=None):
         self.bits |= bits
@@ -91,6 +96,7 @@ def _special(path):
 
 
 def _added(path, src_root, maps, res, fp):
+    res.replica_ok = False
     _special(path)
     if path in PYTEST_CONFIGS:
         old = read_src(src_root, path)
@@ -113,6 +119,7 @@ def _added(path, src_root, maps, res, fp):
 
 
 def _deleted(path, src_root, maps, res):
+    res.replica_ok = False
     _special(path)
     if path in PYTEST_CONFIGS:
         raise Everything(f"{path}: pytest config removed")
@@ -171,8 +178,10 @@ def _modified(fp, path, src_root, maps, res, import_refiner):
     if old is None:
         return _added(path, src_root, maps, res, fp)
     if path in PYTEST_CONFIGS:
+        res.replica_ok = False
         return _config(path, old, _apply_or_none(fp, old), res)
     if not path.endswith(".py"):
+        res.replica_ok = False
         res.add(maps.reads(path), f"{path}: data readers")
         if _watched(path):
             res.nontrivial = True
@@ -186,14 +195,31 @@ def _modified(fp, path, src_root, maps, res, import_refiner):
     # Anything reading the file's text sees any edit, comments included.
     res.add(maps.reads(path), None)
     if new is None:
+        res.replica_ok = False
         res.add(maps.imported(path), f"{path}: patch not applicable, all importers")
         res.nontrivial = True
         return
+    if not path.startswith("sqlglot/"):
+        res.replica_ok = False
+    res.patched[path] = new
+    if maps.reads(path):
+        res.replica_ok = False  # some test reads this file as text
     sites = pyast.analyse(old, new, key=path)
     for site in sites:
         if site.kind == "call":
+            if site.proof is not None and maps.swap_is_noop(path, site.proof):
+                # Tests whose profile is incomplete may have seen other types there.
+                res.add(maps.imported(path) & maps.typeprof_incomplete,
+                        f"{path}: {site.proof[3]}->{site.proof[4]} at line {site.proof[0]} is a no-op "
+                        f"for every profiled operand type")
+                continue
             res.add(maps.call(path, site.lines), f"{path}: {site}")
+            res.call_sites.append((path, site.lines))
         elif site.kind == "import":
+            if path.startswith("sqlglot/"):
+                res.import_files.add(path)
+            else:
+                res.replica_ok = False
             bits = None
             if import_refiner is not None:
                 bits = import_refiner(path, old, new, site, maps)
@@ -201,8 +227,10 @@ def _modified(fp, path, src_root, maps, res, import_refiner):
                 bits = maps.imported(path)
             res.add(bits, f"{path}: {site}")
         elif site.kind == "doc":
+            res.replica_ok = False
             res.add(maps.reads(path), f"{path}: {site}")
         else:  # syntax or unknown
+            res.replica_ok = False
             res.add(maps.imported(path) | maps.reads(path), f"{path}: {site}")
     if sites:
         res.nontrivial = True

@@ -26,6 +26,14 @@ class Maps:
         self.dynamic = data.get("dynamic", [])
         self.class_info = data.get("class_info", {})
         self.has_class_data = bool(self._class_users) and bool(self.class_info) and bool(self.names)
+        self.typeprof = data.get("typeprof", {})
+        self.subtests = {}
+        for test_id, info in data.get("subtests", {}).items():
+            self.subtests[test_id] = {
+                "outside": {f: frozenset(v) for f, v in info["outside"].items()},
+                "windows": [(value, {f: frozenset(v) for f, v in files.items()}) for value, files in info["windows"]],
+            }
+        self.typeprof_incomplete = data.get("typeprof_incomplete", None)
 
     def _lines(self, table, path, lines):
         k = self.file_index.get(path)
@@ -119,3 +127,30 @@ class Maps:
                         continue
             bits |= self.sets[s]
         return bits
+
+    def swap_is_noop(self, path, proof):
+        """True when swapping is/== (or is not/!=) at this comparison cannot change any test.
+
+        Every operand-type pair profiled there must make `==` agree with identity. Tests
+        whose profiling run stopped early are not covered by this and must be added by the caller.
+        """
+        if self.typeprof_incomplete is None:
+            return False
+        line, col, end_line = proof[0], proof[1], proof[2]
+        rows = self.typeprof.get(f"{path}:{line}:{col}")
+        if rows is None:
+            return False  # never reached while profiling: rely on coverage instead
+        return all(_pair_safe(lc, rc, same) for lc, rc, same in rows)
+
+
+def _pair_safe(lc, rc, same):
+    plain = ("ident", "enum", "builtin", "nonesafe")
+    if lc == "none" and rc == "none":
+        return True
+    if lc == "none":
+        return rc in plain
+    if rc == "none":
+        return lc in plain
+    if same:
+        return lc in ("ident", "enum")
+    return lc == "ident" and rc == "ident"

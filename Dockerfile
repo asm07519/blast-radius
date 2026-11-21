@@ -24,7 +24,9 @@ RUN python /app/tools/finish_maps.py --maps /app/maps/maps.bin --tests /app/maps
 
 COPY selector /app/selector
 COPY run.py /app/run.py
-RUN python -m compileall -q /app/selector /app/run.py && chmod -R a+rX /app
+# Bytecode for the pinned sources makes the subtest replicas import sqlglot quickly.
+RUN python -m compileall -q /app/selector /app/run.py /app/src/sqlglot /app/src/tests \
+ && chmod -R a+rX /app
 
 WORKDIR /app
 CMD ["python", "-I", "-S", "/app/run.py"]

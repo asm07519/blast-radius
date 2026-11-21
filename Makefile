@@ -43,8 +43,12 @@ maps: tools
 		--work /work/maps -j $(JOBS) --seed 0 --seed 1 \
 	 && python tools/static_index.py --repo /src/sqlglot --out /work/static.json \
 	 && python tools/class_info.py --repo /src/sqlglot --out /work/classes.json \
+	 && python tools/build_typeprof.py --repo /src/sqlglot --tests maps/tests.json --out /work/typeprof.json -j $(JOBS) \
+	 && python tools/subtest_cov.py --repo /src/sqlglot \
+		--test tests/test_generator.py::TestGenerator::test_generator_memory --out /work/subtests_genmem.json \
 	 && python tools/compact_maps.py --tests maps/tests.json --raw /work/maps/raw --out maps/maps.bin \
-		--static /work/static.json --classes /work/classes.json"
+		--static /work/static.json --classes /work/classes.json --typeprof /work/typeprof.json \
+		--subtests /work/subtests_genmem.json"
 
 # Label the sample with our own runner (must reproduce sample/answers.json).
 truth-sample: tools
