@@ -1,0 +1,12 @@
+# Build context: the Dockerfile copies only requirements.lock, tools/, maps/, selector/ and run.py.
+# Everything evaluation-only stays out of the context (answers, labels, patches, local work).
+.git
+.claude
+work
+sample
+validation
+tests
+docs
+output.jsonl
+**/__pycache__
+*.pyc
