@@ -48,6 +48,7 @@ def install_overlay(src, patched_spec):
                                                           submodule_search_locations=search)
 
     finder = Finder()
+    finder.loader_class = Loader  # Mode 0 checks that patched modules were loaded by it
     sys.dont_write_bytecode = True
     sys.meta_path.insert(0, finder)
     sys.path.insert(0, src)
@@ -73,6 +74,11 @@ def run_mode0(spec):
     except BaseException:  # noqa: BLE001 - the result file then has no complete done line
         code = 70
     finally:
+        for stream in (sys.stdout, sys.stderr, sys.__stdout__, sys.__stderr__):
+            try:
+                stream.flush()  # a debugging "log" keeps everything written so far
+            except BaseException:  # noqa: BLE001
+                pass
         os._exit(code)
 
 

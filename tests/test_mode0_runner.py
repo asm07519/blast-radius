@@ -48,8 +48,8 @@ def _pytest_site():
 PYTEST_SITE = _pytest_site()
 
 FILES = {
-    "pkg/__init__.py": "",
-    "pkg/core.py": "def value():\n    return 1\n",
+    "sqlglot/__init__.py": "",
+    "sqlglot/core.py": "def value():\n    return 1\n",
     "tests/__init__.py": "",
     "tests/test_basic.py": '''
         import os
@@ -57,7 +57,7 @@ FILES = {
         import sys
         import unittest
 
-        from pkg import core
+        from sqlglot import core
 
 
         def helper():
@@ -223,7 +223,7 @@ FILES = {
         import multiprocessing
         import unittest
 
-        from pkg import core
+        from sqlglot import core
 
 
         class TestMP(unittest.TestCase):
@@ -240,7 +240,7 @@ FILES = {
         from concurrent.futures import ProcessPoolExecutor
         from multiprocessing import get_context
 
-        from pkg import core
+        from sqlglot import core
 
         # The pinned tree when this file is a symlink in an fs overlay.
         HERE = os.path.dirname(os.path.realpath(__file__))
@@ -248,7 +248,7 @@ FILES = {
 
 
         def real_core_text():
-            with open(os.path.join(HERE, "..", "pkg", "core.py")) as fh:
+            with open(os.path.join(HERE, "..", "sqlglot", "core.py")) as fh:
                 return fh.read()
 
 
@@ -387,11 +387,11 @@ UNKNOWN = [
 
 
 class Repo:
-    def __init__(self):
+    def __init__(self, files=None):
         base = os.path.join(ROOT, "work")
         os.makedirs(base, exist_ok=True)
-        self.root = tempfile.mkdtemp(prefix="m0-repo-", dir=base)
-        for rel, text in FILES.items():
+        self.root = os.path.realpath(tempfile.mkdtemp(prefix="m0-repo-", dir=base))
+        for rel, text in (FILES if files is None else files).items():
             path = os.path.join(self.root, rel)
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "w") as fh:
@@ -415,8 +415,9 @@ class Repo:
         """Build an fs overlay (outside the repo), run, remove it."""
         ovdir = self.root + "_ov"
         os.makedirs(ovdir, exist_ok=True)
+        mirror = [d for d in ("sqlglot", "tests") if os.path.isdir(os.path.join(self.root, d))]
         root = overlay.build(self.root, {k: v.encode() for k, v in (changes or {}).items()},
-                             ovdir, mirror=("pkg", "tests"))
+                             ovdir, mirror=mirror)
         try:
             spec = {"kind": "mode0", "engine": engine,
                     "site": site if site is not None else (PYTEST_SITE or []),
@@ -503,21 +504,26 @@ class EngineMixin:
             self.assertNotIn("passed", res["outcomes"].values())
 
     def test_spawn_flag(self):
+        # Memory mode denies process creation (the child would import unpatched modules):
+        # the test fails, and the flag is sticky for every later test of the run.
         tid = B + "test_spawn"
         res = self.run_ids([tid, B + "test_pass"])
-        self.assertEqual(res["lines"][tid]["outcome"], "passed")
+        self.assertEqual(res["lines"][tid]["outcome"], "failed")
+        self.assertIn("_Denied", res["lines"][tid]["detail"])
         self.assertIn("spawn", res["lines"][tid]["flags"])
-        self.assertEqual(res["outcomes"][tid], "flagged")
+        self.assertEqual(res["lines"][B + "test_pass"]["outcome"], "passed")
+        self.assertIn("spawn", res["lines"][B + "test_pass"]["flags"])
+        self.assertEqual(res["outcomes"][B + "test_pass"], "flagged")
+        res = self.run_ids([B + "test_pass", tid])  # before the spawn: unaffected
         self.assertEqual(res["outcomes"][B + "test_pass"], "passed")
-        self.assertNotIn("spawn", res["lines"][B + "test_pass"]["flags"])
 
     def test_multiprocessing_spawn_flag_and_no_bytecode(self):
-        # A spawn-context child imports pkg.core from disk (unpatched): the pass is not evidence.
+        # A spawn-context child would import sqlglot.core from disk (unpatched): denied.
         tid = "tests/test_mp.py::TestMP::test_spawn_pool"
         res = self.run_ids([tid])
-        self.assertEqual(res["lines"][tid]["outcome"], "passed")
+        self.assertIn(res["lines"][tid]["outcome"], ("failed", "error"))
         self.assertIn("spawn", res["lines"][tid]["flags"])
-        self.assertEqual(res["outcomes"][tid], "flagged")
+        self.assertNotEqual(res["outcomes"][tid], "passed")
         written = [os.path.join(r, n) for r, _, names in os.walk(self.repo.root) for n in names
                    if n.endswith(".pyc")]
         self.assertEqual(written, [])
@@ -530,7 +536,7 @@ class EngineMixin:
     def test_overlay_is_imported(self):
         tid = B + "test_pass"
         self.assertEqual(self.run_ids([tid])["outcomes"][tid], "passed")
-        patched = self.repo.patched("pkg/core.py", "def value():\n    return 2\n")
+        patched = self.repo.patched("sqlglot/core.py", "def value():\n    return 2\n")
         res = self.run_ids([tid], patched=patched)
         self.assertEqual(res["outcomes"][tid], "failed")
 
@@ -545,7 +551,7 @@ class EngineMixin:
         tid = B + "test_read_source"
         res = self.run_ids([tid])
         self.assertEqual(res["outcomes"][tid], "passed")
-        patched = self.repo.patched("pkg/core.py", "def value():\n    return 1\n# changed\n")
+        patched = self.repo.patched("sqlglot/core.py", "def value():\n    return 1\n# changed\n")
         res = self.run_ids([tid], patched=patched)
         self.assertIn("read_patched", res["lines"][tid]["flags"])
         self.assertEqual(res["outcomes"][tid], "flagged")
@@ -606,8 +612,8 @@ class TestPytestEngine(EngineMixin, unittest.TestCase):
 
 
 F = "tests/test_fs.py::TestFs::"
-PATCH_CORE = {"pkg/core.py": "def value():\n    return 2\n"}
-COMMENT_CORE = {"pkg/core.py": "def value():\n    return 1\n# changed\n"}
+PATCH_CORE = {"sqlglot/core.py": "def value():\n    return 2\n"}
+COMMENT_CORE = {"sqlglot/core.py": "def value():\n    return 1\n# changed\n"}
 
 
 def _alive(pid):
@@ -660,12 +666,12 @@ class TestFsMode(unittest.TestCase):
         res = self.run_fs([tid], changes=PATCH_CORE)
         self.assertEqual(res["lines"][tid]["outcome"], "failed", res["lines"][tid])
         self.assertIn("2 != 1", res["lines"][tid]["detail"])
-        # The same edit through the in-memory overlay: the worker imports the unpatched file
-        # and the test passes, which is why such a pass is flagged "spawn" there.
-        res = self.repo.run("unittest", [tid], patched=self.repo.patched("pkg/core.py", PATCH_CORE["pkg/core.py"]))
-        self.assertEqual(res["lines"][tid]["outcome"], "passed")
+        # The same edit through the in-memory overlay: the worker would import the unpatched
+        # file, so process creation is denied there (and flagged "spawn").
+        res = self.repo.run("unittest", [tid], patched=self.repo.patched("sqlglot/core.py", PATCH_CORE["sqlglot/core.py"]))
+        self.assertIn(res["lines"][tid]["outcome"], ("failed", "error"))
         self.assertIn("spawn", res["lines"][tid]["flags"])
-        self.assertEqual(res["outcomes"][tid], "flagged")
+        self.assertNotEqual(res["outcomes"][tid], "passed")
 
     def test_reading_patched_file_is_faithful(self):
         # memory mode flags read_patched; on disk the patched bytes are what a test reads.
@@ -764,7 +770,7 @@ class TestFsMode(unittest.TestCase):
         root = self.repo.root
         for extra in ({"overlay": "disk"}, {"overlay": "fs", "shadowed": "x"},
                       {"overlay": "fs", "shadowed": ["rel/path"]},
-                      {"overlay": "fs", "shadowed": [], "patched": self.repo.patched("pkg/core.py", "")}):
+                      {"overlay": "fs", "shadowed": [], "patched": self.repo.patched("sqlglot/core.py", "")}):
             spec = {"kind": "mode0", "src": root, "patched": {}, "engine": "unittest", "site": [],
                     "tests": [{"id": B + "test_pass", "cap": 5.0}], **extra}
             res = m0.execute(spec, 30, python=PYTHON, workdir=self.repo.work)
@@ -786,6 +792,531 @@ class TestFsMode(unittest.TestCase):
         self.assertEqual(set(res["outcomes"].values()), {"passed"}, res["lines"])
         res = self.run_fs(ids, engine="pytest", changes=PATCH_CORE)
         self.assertEqual({res["lines"][i]["outcome"] for i in ids}, {"failed"}, res["lines"])
+
+
+# ------------------------------------------------------------------ review regressions
+# Each case ports a reproduction of the independent runner review (work/review-mode0/eN.py):
+# the expected outcomes are those of the organisers' pytest run on the patched tree (truth),
+# or a non-pass where the runner cannot reproduce it.
+
+REVIEW_FILES = {
+    "sqlglot/__init__.py": "",
+    "sqlglot/core.py": "def value():\n    return 1\n\n\ndef boom():\n    raise ValueError('x')\n",
+    "sqlglot/flags.py": "OK = True\n",
+    "sqlglot/logs.py": "import logging\n\nlogger = logging.getLogger('sqlglot')\n\n\ndef f():\n    return 1\n",
+    "tests/test_logs.py": '''
+        import unittest
+
+        from sqlglot import logs
+
+
+        class TestLogs(unittest.TestCase):
+            def test_f(self):
+                self.assertEqual(logs.f(), 1)
+    ''',
+    "tests/__init__.py": "",
+    "tests/test_sticky.py": '''
+        import os
+        import unittest
+
+        ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+        class TestReadInSetUpClass(unittest.TestCase):
+            @classmethod
+            def setUpClass(cls):
+                with open(os.path.join(ROOT, "sqlglot", "core.py")) as fh:
+                    cls.src = fh.read()
+
+            def test_1(self):
+                self.assertIn("return 1", self.src)
+
+            def test_2(self):
+                self.assertIn("return 1", self.src)
+    ''',
+    "tests/test_lc.py": '''
+        import inspect
+        import traceback
+        import unittest
+
+        from sqlglot import core
+
+
+        class TestLC(unittest.TestCase):
+            def test_a_fails_through_core(self):
+                core.boom()
+
+            def test_a2_caught_traceback(self):
+                try:
+                    core.boom()
+                except ValueError:
+                    traceback.format_exc()
+
+            def test_b_reads_source(self):
+                self.assertIn("return 1", inspect.getsource(core.value))
+    ''',
+    "tests/test_env.py": '''
+        import faulthandler
+        import io
+        import logging
+        import os
+        import sys
+        import unittest
+
+
+        def depth():
+            f, n = sys._getframe(1), 0
+            while f:
+                n += 1
+                f = f.f_back
+            return n
+
+
+        def c_budget():
+            lo, hi = 1, 20000
+            while lo < hi:
+                mid = (lo + hi + 1) // 2
+                x = []
+                for _ in range(mid):
+                    x = [x]
+                try:
+                    repr(x)
+                    lo = mid
+                except RecursionError:
+                    hi = mid - 1
+            return lo
+
+
+        MODULE_DEPTH = depth()
+
+
+        class TestEnv(unittest.TestCase):
+            @classmethod
+            def setUpClass(cls):
+                cls.class_depth = depth()
+
+            def test_stdin_like_pytest(self):
+                for call in (sys.stdin.read, sys.stdin.readline, sys.stdin.readlines,
+                             lambda: next(iter(sys.stdin)), input):
+                    with self.assertRaises(OSError):
+                        call()
+                with self.assertRaises(io.UnsupportedOperation):
+                    sys.stdin.fileno()
+                self.assertFalse(sys.stdin.readable())
+                self.assertEqual(os.read(0, 10), b"")
+
+            def test_stdin_read(self):
+                self.assertEqual(sys.stdin.read(), "")  # truth: OSError
+
+            def test_depth(self):
+                # organisers' pytest: body 32, setUpClass 41, module 38 frames; C budget 9977
+                self.assertGreaterEqual(depth(), 32 + 8)
+                self.assertGreaterEqual(self.class_depth, 41 + 8)
+                self.assertGreaterEqual(MODULE_DEPTH, 38 + 8)
+                if sys.version_info[:2] == (3, 13):  # 3.14 limits the C stack by size
+                    self.assertLessEqual(c_budget(), 9977 - 10)
+
+            def test_process_like_pytest(self):
+                self.assertIsNot(sys.stdout, sys.__stdout__)
+                print("\\ud800 surrogate")
+                self.assertTrue(faulthandler.is_enabled())
+                self.assertTrue(os.environ["PYTEST_CURRENT_TEST"].endswith(
+                    "tests/test_env.py::TestEnv::test_process_like_pytest (call)"))
+                self.assertTrue(callable(exit))
+                logging.basicConfig(level=logging.INFO)  # a no-op under pytest
+                self.assertEqual(logging.getLogger().level, logging.WARNING)
+    ''',
+    "tests/test_call.py": '''
+        import unittest
+
+        INITS = []
+
+
+        class TestCallOverride(unittest.TestCase):
+            def __call__(self, *a, **kw):
+                raise RuntimeError("__call__ override")
+
+            def test_a(self):
+                pass
+
+
+        class TestInstances(unittest.TestCase):
+            def __init__(self, name="runTest"):
+                super().__init__(name)
+                INITS.append(name)
+
+            def test_a(self):
+                # pytest instantiates the class at collection, once with runTest and once per
+                # test, and sets the collected bound method on the instance it runs
+                self.assertEqual(sorted(INITS), ["runTest", "test_a", "test_b"])
+                self.assertIn("test_a", vars(self))
+
+            def test_b(self):
+                pass
+    ''',
+    "tests/test_warn.py": '''
+        import gc
+        import unittest
+        import warnings
+
+
+        class Bad:
+            def __del__(self):
+                raise ValueError("unraisable")
+
+
+        class TestWarnState(unittest.TestCase):
+            @classmethod
+            def setUpClass(cls):
+                warnings.simplefilter("error")
+
+            def test_1(self):
+                pass
+
+            def test_2(self):
+                warnings.warn("hello", UserWarning)  # pytest: setUpClass's filter is gone
+
+
+        class TestLater(unittest.TestCase):
+            def test_after(self):
+                warnings.warn("hello", UserWarning)
+
+
+        class TestUnraisable(unittest.TestCase):
+            def test_unraisable_is_error(self):
+                warnings.simplefilter("error")
+                Bad()
+                gc.collect()  # pytest 9.2: the unraisable warning is raised -> call failed
+
+            def test_unraisable_default(self):
+                Bad()
+                gc.collect()
+    ''',
+    "tests/test_collect.py": '''
+        import unittest
+
+        from sqlglot import flags
+
+
+        class TestA(unittest.TestCase):
+            def test_ok(self):
+                pass
+
+
+        class TestB(unittest.TestCase):
+            def __init__(self, name="runTest"):
+                super().__init__(name)
+                assert flags.OK
+
+            def test_b(self):
+                pass
+    ''',
+    "tests/test_exit.py": '''
+        import atexit
+        import threading
+        import time
+        import unittest
+
+
+        class TestExit(unittest.TestCase):
+            def test_thread(self):
+                threading.Thread(target=time.sleep, args=(30,)).start()
+
+            def test_short_thread(self):
+                threading.Thread(target=time.sleep, args=(0.2,)).start()
+
+            def test_atexit_hang(self):
+                atexit.register(time.sleep, 60)
+
+            def test_atexit_ok(self):
+                atexit.register(lambda: None)
+
+            def test_plain(self):
+                pass
+    ''',
+    "tests/test_escape.py": '''
+        import os
+        import sys
+        import unittest
+
+        HERE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        CORE = os.path.join(HERE, "sqlglot", "core.py")
+
+
+        class TestEscape(unittest.TestCase):
+            def test_ctypes(self):
+                import ctypes
+                self.assertEqual(ctypes.CDLL(None).getpid(), os.getpid())
+
+            def test_subinterpreter(self):
+                import _interpreters
+                _interpreters.destroy(_interpreters.create())
+
+            def test_hardlink(self):
+                link = os.path.join(os.path.dirname(HERE), os.path.basename(HERE) + "_core.hl")
+                os.link(CORE, link)
+                try:
+                    with open(link) as fh:
+                        self.assertIn("return 1", fh.read())
+                finally:
+                    os.unlink(link)
+
+            def test_dir_fd(self):
+                dfd = os.open(os.path.dirname(CORE), os.O_RDONLY)
+                try:
+                    fd = os.open("core.py", os.O_RDONLY, dir_fd=dfd)
+                    self.assertIn(b"return 1", os.read(fd, 1000))
+                    os.close(fd)
+                finally:
+                    os.close(dfd)
+
+            def test_setsid_child(self):
+                import subprocess
+                subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"],
+                                 start_new_session=True)
+
+            def test_swap_module(self):
+                import importlib.util
+                spec = importlib.util.spec_from_file_location("sqlglot.core", CORE)
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                sys.modules["sqlglot.core"] = mod
+
+            def test_plain(self):
+                pass
+    ''',
+    "tests/test_asserts.py": '''
+        import unittest
+
+
+        class TestAsserts(unittest.TestCase):
+            def test_message_text(self):
+                try:
+                    assert 1 == 2
+                except AssertionError as e:
+                    assert str(e) == "", str(e)  # rewritten: "assert 1 == 2"
+
+            def test_failing(self):
+                assert 1 == 2
+
+            def test_passing(self):
+                assert 1 == 1
+                with self.assertRaises(AssertionError):
+                    self.assertEqual(1, 2)
+    ''',
+}
+
+CORE2 = "def value():\n    return 2\n\n\ndef boom():\n    raise ValueError('x')\n"
+
+
+def _ids(prefix, *names):
+    return [prefix + n for n in names]
+
+
+class ReviewMixin:
+    engine = None
+
+    @classmethod
+    def setUpClass(cls):
+        cls.repo = Repo(REVIEW_FILES)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.repo.close()
+
+    def run_ids(self, ids, **kw):
+        return self.repo.run(self.engine, ids, **kw)
+
+    def core2(self):
+        return self.repo.patched("sqlglot/core.py", CORE2)
+
+    def test_f3_unsafe_flag_in_setupclass_is_sticky(self):  # e10
+        ids = _ids("tests/test_sticky.py::TestReadInSetUpClass::", "test_1", "test_2")
+        res = self.run_ids(ids + ["tests/test_lc.py::TestLC::test_a2_caught_traceback"],
+                           patched=self.core2())
+        for tid in res["outcomes"]:
+            self.assertEqual(res["outcomes"][tid], "flagged", tid)
+            self.assertIn("read_patched", res["lines"][tid]["flags"])
+
+    def test_f3_source_readers_see_the_patched_text(self):  # e7
+        a, a2, b = _ids("tests/test_lc.py::TestLC::", "test_a_fails_through_core",
+                        "test_a2_caught_traceback", "test_b_reads_source")
+        res = self.run_ids([a, a2, b], patched=self.core2())
+        self.assertEqual(res["lines"][a]["outcome"], "failed")
+        self.assertEqual(res["outcomes"][a2], "passed")  # tracebacks no longer read the file
+        self.assertEqual(res["lines"][b]["outcome"], "failed")  # getsource: "return 2"
+        self.assertEqual(self.run_ids([b])["outcomes"][b], "passed")
+        for tid in (a, a2, b):
+            self.assertNotIn("read_patched", res["lines"][tid]["flags"])
+
+    def test_f4_process_state_like_pytest(self):  # e1, e2, e2c
+        ids = _ids("tests/test_env.py::TestEnv::", "test_stdin_like_pytest", "test_stdin_read",
+                   "test_depth", "test_process_like_pytest")
+        res = self.run_ids(ids)
+        lines = {i: res["lines"][i]["outcome"] for i in ids}
+        self.assertEqual(lines, {ids[0]: "passed", ids[1]: "failed", ids[2]: "passed",
+                                 ids[3]: "passed"}, res["lines"])
+        self.assertEqual(res["done"]["pad"], [m0._PAD_DEPTH, m0._PAD_C])
+
+    def test_f4_call_and_collection_instances(self):  # e3b
+        ids = ["tests/test_call.py::TestCallOverride::test_a", "tests/test_call.py::TestInstances::test_a"]
+        res = self.run_ids(ids)
+        self.assertEqual(res["lines"][ids[0]]["outcome"], "failed")
+        self.assertEqual(res["outcomes"][ids[1]], "passed", res["lines"][ids[1]])
+
+    def test_f4_warning_state_and_unraisable(self):  # e3b TestWarnState, e1 unraisable
+        ids = ["tests/test_warn.py::TestWarnState::test_1", "tests/test_warn.py::TestWarnState::test_2",
+               "tests/test_warn.py::TestLater::test_after",
+               "tests/test_warn.py::TestUnraisable::test_unraisable_is_error",
+               "tests/test_warn.py::TestUnraisable::test_unraisable_default"]
+        res = self.run_ids(ids)
+        got = {i: res["lines"][i]["outcome"] for i in ids}
+        self.assertEqual(got, {ids[0]: "passed", ids[1]: "passed", ids[2]: "passed",
+                               ids[3]: "failed", ids[4]: "passed"}, res["lines"])
+
+    def test_f4_logging_error_fails_like_pytest(self):  # review-admission2 a13_logging
+        # pytest's LogCaptureHandler re-raises a formatting error (bad %-arity) in the phase
+        tid = "tests/test_logs.py::TestLogs::test_f"
+        self.assertEqual(self.run_ids([tid])["outcomes"][tid], "passed")
+        bad = ("import logging\n\nlogger = logging.getLogger('sqlglot')\n\n\n"
+               "def f():\n    logger.warning('%s %s', 1)\n    return 1\n")
+        res = self.run_ids([tid], patched=self.repo.patched("sqlglot/logs.py", bad))
+        self.assertEqual(res["lines"][tid]["outcome"], "failed", res["lines"][tid])
+
+    def test_f5_class_collection_error_fails_the_file(self):  # e8
+        tid = "tests/test_collect.py::TestA::test_ok"
+        self.assertEqual(self.run_ids([tid])["outcomes"][tid], "passed")
+        res = self.run_ids([tid], patched=self.repo.patched("sqlglot/flags.py", "OK = False\n"))
+        self.assertEqual(res["lines"][tid]["outcome"], "error")
+        self.assertEqual(res["done"]["counts"], {"error": 1})
+
+    def test_f6_live_thread_or_hanging_atexit_is_incomplete(self):  # e15
+        T = "tests/test_exit.py::TestExit::"
+        for name, complete in (("test_thread", False), ("test_atexit_hang", False),
+                               ("test_short_thread", True), ("test_atexit_ok", True)):
+            t0 = time.monotonic()
+            res = self.run_ids([T + name, T + "test_plain"])
+            self.assertLess(time.monotonic() - t0, 30)
+            self.assertEqual(bool(res["done"] and res["done"]["complete"]), complete, (name, res["done"]))
+            self.assertEqual("passed" in res["outcomes"].values(), complete, name)
+
+    def test_f7_escapes_are_unsafe(self):  # e4
+        T = "tests/test_escape.py::TestEscape::"
+        for name, flag in (("test_ctypes", "ctypes"), ("test_subinterpreter", "subinterp"),
+                           ("test_hardlink", "read_patched"), ("test_dir_fd", "read_patched")):
+            res = self.run_ids([T + name, T + "test_plain"], patched=self.core2())
+            self.assertIn(flag, res["lines"][T + name]["flags"], name)
+            self.assertNotEqual(res["outcomes"][T + name], "passed", name)
+            self.assertEqual(res["outcomes"][T + "test_plain"], "flagged", name)  # sticky
+        res = self.run_ids([T + "test_ctypes"])  # unpatched: still denied (escape hatch)
+        self.assertNotEqual(res["outcomes"][T + "test_ctypes"], "passed")
+
+    def test_f7_r2_no_process_leaves_the_group(self):  # e5 orphan
+        tid = "tests/test_escape.py::TestEscape::test_setsid_child"
+        res = self.run_ids([tid])
+        self.assertIn("spawn", res["lines"][tid]["flags"])
+        self.assertNotEqual(res["outcomes"][tid], "passed")
+        import subprocess
+        out = subprocess.run(["pgrep", "-f", "import time; time.sleep\\(30\\)"], capture_output=True,
+                             text=True).stdout.split()
+        self.assertEqual(out, [])
+
+    def test_f1_module_not_from_overlay_is_incomplete(self):
+        T = "tests/test_escape.py::TestEscape::"
+        res = self.run_ids([T + "test_swap_module", T + "test_plain"], patched=self.core2())
+        self.assertFalse(res["done"]["complete"])
+        self.assertIn("overlay", res["done"]["aborted"])
+        self.assertNotIn("passed", res["outcomes"].values())
+
+    def test_assert_rewriting_difference_is_unsafe(self):  # e9
+        T = "tests/test_asserts.py::TestAsserts::"
+        res = self.run_ids([T + "test_passing", T + "test_failing", T + "test_message_text"])
+        self.assertEqual(res["outcomes"][T + "test_passing"], "passed")
+        self.assertEqual(res["lines"][T + "test_failing"]["outcome"], "failed")
+        self.assertNotIn("assert_rewrite", res["lines"][T + "test_failing"]["flags"])
+        self.assertIn("assert_rewrite", res["lines"][T + "test_message_text"]["flags"])
+        self.assertEqual(res["outcomes"][T + "test_message_text"], "flagged")
+        self.assertTrue(res["done"]["assert_watch"])
+
+
+class TestReviewUnittest(ReviewMixin, unittest.TestCase):
+    engine = "unittest"
+
+    def test_f1_bad_patched_specs(self):
+        root = self.repo.root
+        good = self.repo.patched("sqlglot/core.py", CORE2)
+        enc = good["sqlglot.core"][1]
+        bad = [
+            {"sqlglot.other": [os.path.join(root, "sqlglot/core.py"), enc]},         # wrong key
+            {"sqlglot.nope": [os.path.join(root, "sqlglot/nope.py"), enc]},          # missing file
+            {"tests.conftest": [os.path.join(root, "tests/conftest.py"), enc]},      # conftest
+            {"pkg.x": [os.path.join(root, "pkg/x.py"), enc]},                        # outside
+            {"sqlglot.core": [root + "/sqlglot/../sqlglot/core.py", enc]},           # not canonical
+            {"sqlglot.core": [os.path.join(root, "sqlglot/core.py"), "%%%"]},        # not base64
+            {"sqlglot.core": [os.path.join(root, "sqlglot/core.py"), enc],
+             "sqlglot": [os.path.join(root, "sqlglot/core.py"), enc]},               # path twice
+            {"sqlglot.core": os.path.join(root, "sqlglot/core.py")},                 # shape
+        ]
+        tid = "tests/test_lc.py::TestLC::test_b_reads_source"
+        for patched in bad:
+            res = self.run_ids([tid], patched=patched)
+            self.assertEqual(res["returncode"], m0.EXIT_BADSPEC, patched)
+            self.assertNotEqual(res["outcomes"][tid], "passed")
+        init = self.repo.patched("sqlglot/__init__.py", "")
+        self.assertEqual(self.run_ids([tid], patched=init)["outcomes"][tid], "passed")
+
+    def test_r1_execute_never_raises(self):
+        tid = "tests/test_lc.py::TestLC::test_b_reads_source"
+        ro = os.path.join(self.repo.work, "ro")
+        os.makedirs(ro, exist_ok=True)
+        os.chmod(ro, 0o500)
+        try:
+            spec = {"kind": "mode0", "src": self.repo.root, "patched": {}, "engine": "unittest",
+                    "site": [], "tests": [{"id": tid, "cap": 5.0}]}
+            self.assertEqual(m0.execute(spec, 30, python=PYTHON, workdir=ro)["outcomes"], {tid: "notrun"})
+            self.assertEqual(m0.execute(spec, 30, python="/nonexistent/python",
+                                        workdir=self.repo.work)["outcomes"], {tid: "notrun"})
+            self.assertEqual(m0.execute({"tests": "bad"}, 30)["outcomes"], {})
+        finally:
+            os.chmod(ro, 0o700)
+
+
+@unittest.skipIf(PYTEST_SITE is None, "pytest not found (set BR_MODE0_PYTHON and BR_MODE0_SITE)")
+class TestReviewPytest(ReviewMixin, unittest.TestCase):
+    engine = "pytest"
+
+
+class TestReviewFs(unittest.TestCase):
+    """The same escapes and checks in fs overlay mode (no memory-only denials there)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.repo = Repo(REVIEW_FILES)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.repo.close()
+
+    def test_sticky_and_escapes(self):
+        T = "tests/test_escape.py::TestEscape::"
+        for name, flag in (("test_ctypes", "ctypes"), ("test_subinterpreter", "subinterp"),
+                           ("test_setsid_child", "spawn")):
+            res = self.repo.run_fs("unittest", [T + name, T + "test_plain"],
+                                   changes={"sqlglot/core.py": CORE2})
+            self.assertIn(flag, res["lines"][T + name]["flags"], name)
+            self.assertNotEqual(res["outcomes"][T + name], "passed", name)
+            self.assertEqual(res["outcomes"][T + "test_plain"], "flagged", name)
+
+    def test_shutdown_checks(self):
+        T = "tests/test_exit.py::TestExit::"
+        res = self.repo.run_fs("unittest", [T + "test_thread", T + "test_plain"])
+        self.assertFalse(res["done"]["complete"])
+        self.assertNotIn("passed", res["outcomes"].values())
+
+    def test_collection_error(self):
+        tid = "tests/test_collect.py::TestA::test_ok"
+        res = self.repo.run_fs("unittest", [tid], changes={"sqlglot/flags.py": "OK = False\n"})
+        self.assertEqual(res["lines"][tid]["outcome"], "error")
 
 
 class TestParseResults(unittest.TestCase):
