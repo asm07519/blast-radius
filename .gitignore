@@ -3,3 +3,4 @@ output.jsonl
 __pycache__/
 *.pyc
 maps/maps.bin.new
+.claude/
