@@ -1,0 +1,18 @@
+# The organisers' labelling environment plus our tools: used by `make maps`,
+# `make truth` and `make eval-mutants`. Not part of the submission.
+FROM python:3.13-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ARG SQLGLOT_COMMIT=eb11aec4be8cb2122afe713a4816662c3f0fb2fa
+
+COPY requirements.lock /tmp/requirements.lock
+RUN pip install --no-cache-dir -r /tmp/requirements.lock
+
+ADD https://github.com/tobymao/sqlglot/archive/${SQLGLOT_COMMIT}.tar.gz /tmp/sqlglot.tar.gz
+RUN mkdir -p /src/sqlglot \
+ && tar -xzf /tmp/sqlglot.tar.gz -C /src/sqlglot --strip-components=1 \
+ && rm /tmp/sqlglot.tar.gz
+
+COPY tools /app/tools
+COPY selector /app/selector
+WORKDIR /app
