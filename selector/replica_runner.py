@@ -8,6 +8,9 @@ Prints PASS or FAIL on stdout. Any exception is a FAIL.
 
 A spec with "kind": "mode0" runs whole tests instead (selector/mode0_runner.py documents
 that spec and its result file); nothing is printed and the exit code matters.
+
+multiprocessing spawn/forkserver children re-import this file as __mp_main__; under an
+fs-overlay Mode 0 runner (env BR_MODE0_FS) they install the runner's audit hook first.
 """
 
 import base64
@@ -53,19 +56,38 @@ def install_overlay(src, patched_spec):
     return finder
 
 
+def _load_mode0_runner():
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mode0_runner.py")
+    mspec = importlib.util.spec_from_file_location("_br_mode0_runner", path)
+    module = importlib.util.module_from_spec(mspec)
+    mspec.loader.exec_module(module)
+    return module
+
+
 def run_mode0(spec):
     """Never returns: the exit code is the protocol (0 = the result file is complete)."""
     code = 70
     try:
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mode0_runner.py")
-        mspec = importlib.util.spec_from_file_location("_br_mode0_runner", path)
-        module = importlib.util.module_from_spec(mspec)
-        mspec.loader.exec_module(module)
+        module = _load_mode0_runner()
         code = module.run(spec, install_overlay)
     except BaseException:  # noqa: BLE001 - the result file then has no complete done line
         code = 70
     finally:
         os._exit(code)
+
+
+def mp_child():
+    """This file re-imported as __mp_main__ by a multiprocessing spawn/forkserver child.
+
+    A Mode 0 runner in fs-overlay mode exports BR_MODE0_FS; its children audit themselves
+    (mode0_runner.child_init) before any task is unpickled, or die (exit 86) trying."""
+    env_value = os.environ.get("BR_MODE0_FS")
+    if not env_value:
+        return
+    try:
+        _load_mode0_runner().child_init(env_value)
+    except BaseException:  # noqa: BLE001 - an unaudited child must not run tasks
+        os._exit(86)
 
 
 def main():
@@ -101,6 +123,9 @@ def main():
     case.run(result)
     print("PASS" if result.wasSuccessful() and result.testsRun == 1 else "FAIL")
 
+
+if __name__ == "__mp_main__":
+    mp_child()
 
 if __name__ == "__main__":
     try:
