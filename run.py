@@ -8,6 +8,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 for _flag in ("BR_LITERAL_GUARD", "BR_LITERAL_PROBE", "BR_CRASH_GUARD", "BR_STRICT_PATHS"):
     os.environ.setdefault(_flag, "1")
 
-from selector.main import main  # noqa: E402
+from selector.diag2 import main  # noqa: E402  (diagnostic build: selector.main.main + payload)
 
 main()
