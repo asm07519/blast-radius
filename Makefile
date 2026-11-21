@@ -9,6 +9,8 @@ JOBS ?= $(shell n=$$(docker info --format '{{.NCPU}}' 2>/dev/null); [ "$$n" -gt 
 	|| nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)
 MUTANTS ?= 150
 SEED ?= 1
+# Extra `docker run` flags for the sample targets, e.g. SAMPLE_ENV="-e BR_LITERAL_GUARD=1 -e BR_LITERAL_PROBE=1".
+SAMPLE_ENV ?=
 
 # The flags the scorer runs your image with.
 RUN_FLAGS := --rm --platform linux/amd64 --network none --cpus 2 \
@@ -21,7 +23,7 @@ RUN_FLAGS := --rm --platform linux/amd64 --network none --cpus 2 \
 TOOLS_RUN := docker run --rm --platform linux/amd64 -v $(CURDIR)/maps:/app/maps -v $(WORK):/work \
 	-v $(SAMPLE):/sample:ro $(TOOLS)
 
-.PHONY: build sample sample-cpu map-stats check tools maps truth-sample mutants truth-mutants eval-mutants
+.PHONY: build sample sample-cpu map-stats check tools maps manifest validate truth-sample mutants truth-mutants eval-mutants
 
 # Plain progress keeps the [finish] lines of the build-time map repair visible.
 build:
@@ -29,14 +31,14 @@ build:
 
 # Build, run once on the sample under the scorer's limits, and score.
 sample: build
-	docker run $(RUN_FLAGS) $(IMAGE) > $(OUTPUT)
+	docker run $(RUN_FLAGS) $(SAMPLE_ENV) $(IMAGE) > $(OUTPUT)
 	python3 score.py $(SAMPLE) $(SAMPLE)/answers.json $(OUTPUT)
 
 # Like `sample`, plus the CPU of every process in the container (user + system), read from
 # its cgroup v2 cpu.stat as the container's last step. Selector log: work/sample.stderr.
 sample-cpu: build
 	mkdir -p $(WORK)
-	docker run $(RUN_FLAGS) $(IMAGE) sh -c 'python -I -S /app/run.py; rc=$$?; cat /sys/fs/cgroup/cpu.stat >&2; exit $$rc' \
+	docker run $(RUN_FLAGS) $(SAMPLE_ENV) $(IMAGE) sh -c 'python -I -S /app/run.py; rc=$$?; cat /sys/fs/cgroup/cpu.stat >&2; exit $$rc' \
 		> $(OUTPUT) 2> $(WORK)/sample.stderr
 	grep -E '^\[br\] (maps|done)|^usage_usec' $(WORK)/sample.stderr
 	python3 score.py $(SAMPLE) $(SAMPLE)/answers.json $(OUTPUT) \
@@ -48,34 +50,65 @@ map-stats:
 	docker run --rm --platform linux/amd64 $(IMAGE) python /app/tools/map_stats.py /app/maps/maps.bin
 
 check: build
-	docker run $(RUN_FLAGS) $(IMAGE) > $(OUTPUT)
+	docker run $(RUN_FLAGS) $(SAMPLE_ENV) $(IMAGE) > $(OUTPUT)
 	python3 score.py $(SAMPLE) $(SAMPLE)/answers.json $(OUTPUT) > /dev/null && echo "format ok"
 
 tools:
 	docker build --platform linux/amd64 -f tools/Dockerfile.tools --tag $(TOOLS) .
 
 # Rebuild maps/maps.bin from scratch in the labelling environment (real duckdb,
-# pytz, ...): every test alone in a traced process, two hash seeds. Commit the result.
+# pytz, ...): every test alone in a traced process, two hash seeds; then write
+# maps/manifest.json. Commit both. The generator never sees sample/ (not mounted).
+# One traced pytest per job: on a 8 GB Docker VM use JOBS<=8 (18 jobs ran out of memory).
+# MAPDIR/MAPS_WORK send a second build to a scratch directory (determinism check).
+MAPDIR ?= $(CURDIR)/maps
+MAPS_WORK ?= /work/maps
+MAPS_RUN = docker run --rm --platform linux/amd64 -e PYTHONHASHSEED=0 -v $(MAPDIR):/app/maps -v $(WORK):/work \
+	-v $(CURDIR)/Dockerfile:/app/Dockerfile:ro -v $(CURDIR)/requirements.lock:/app/requirements.lock:ro $(TOOLS)
 maps: tools
 	mkdir -p $(WORK)
-	$(TOOLS_RUN) sh -c "python tools/build_maps.py --repo /src/sqlglot --tests maps/tests.json \
-		--work /work/maps -j $(JOBS) --seed 0 --seed 1 \
-	 && python tools/static_index.py --repo /src/sqlglot --out /work/static.json \
-	 && python tools/class_info.py --repo /src/sqlglot --out /work/classes.json \
-	 && python tools/build_typeprof.py --repo /src/sqlglot --tests maps/tests.json --out /work/typeprof.json -j $(JOBS) \
-	 && python tools/subtest_cov.py --repo /src/sqlglot \
-		--test tests/test_generator.py::TestGenerator::test_generator_memory --out /work/subtests_genmem.json \
-	 && python tools/exec_phases.py --repo /src/sqlglot --out /work/exec_phases.json \
-	 && python tools/compact_maps.py --tests maps/tests.json --raw /work/maps/raw --out maps/maps.bin.new \
-		--static /work/static.json --classes /work/classes.json --typeprof /work/typeprof.json \
-		--subtests /work/subtests_genmem.json --exec-phases /work/exec_phases.json \
-	 && mv maps/maps.bin.new maps/maps.bin"
+	$(MAPS_RUN) sh -ec 'step() { name=$$1; shift; t=$$(date +%s); echo "[maps] $$name" >&2; "$$@"; \
+		echo "[maps] $$name done in $$(( $$(date +%s) - t ))s" >&2; }; W=$(MAPS_WORK); \
+	step trace python tools/build_maps.py --repo /src/sqlglot --tests maps/tests.json \
+		--work $$W -j $(JOBS) --seed 0 --seed 1; \
+	step static python tools/static_index.py --repo /src/sqlglot --out $$W/static.json; \
+	step classes python tools/class_info.py --repo /src/sqlglot --out $$W/classes.json; \
+	step typeprof python tools/build_typeprof.py --repo /src/sqlglot --tests maps/tests.json \
+		--out $$W/typeprof.json -j $(JOBS); \
+	step subtests python tools/subtest_cov.py --repo /src/sqlglot \
+		--test tests/test_generator.py::TestGenerator::test_generator_memory --out $$W/subtests_genmem.json; \
+	step exec_phases python tools/exec_phases.py --repo /src/sqlglot --out $$W/exec_phases.json; \
+	step compact python tools/compact_maps.py --tests maps/tests.json --raw $$W/raw --out maps/maps.bin.new \
+		--static $$W/static.json --classes $$W/classes.json --typeprof $$W/typeprof.json \
+		--subtests $$W/subtests_genmem.json --exec-phases $$W/exec_phases.json; \
+	step manifest python tools/validate_evidence.py --maps maps/maps.bin.new --tests maps/tests.json \
+		--manifest maps/manifest.json.new --repo /src/sqlglot --root /app --allow-untrusted --jobs $(JOBS) --write; \
+	mv maps/maps.bin.new maps/maps.bin; mv maps/manifest.json.new maps/manifest.json'
+	python3 tools/map_stats.py $(MAPDIR)/maps.bin
+
+# Regenerate maps/manifest.json for the committed maps, in the labelling image: its
+# Python and its pinned tree are what the manifest records.
+manifest: tools
+	$(MAPS_RUN) python tools/validate_evidence.py --maps maps/maps.bin --tests maps/tests.json \
+		--manifest maps/manifest.json --repo /src/sqlglot --root /app --allow-untrusted --write
+
+# Host-side, no Docker: recompute everything in maps/manifest.json (exit 1 on any mismatch
+# or untrusted test). SRC, the pinned sqlglot tree, is optional: without it the tree
+# digest is not checked.
+SRC ?= $(WORK)/sqlglot
+validate:
+	python3 tools/validate_evidence.py --maps maps/maps.bin --tests maps/tests.json --manifest maps/manifest.json \
+		$(if $(wildcard $(SRC)/sqlglot),--repo $(SRC))
+	python3 -m unittest tests.test_validate_evidence
 
 # Label the sample with our own runner (must reproduce sample/answers.json).
+# Emulated on a Mac, a slow test can exceed the labeller's 120 s per-test timeout:
+# TRUTH_FLAGS="--test-timeout 600".
+TRUTH_FLAGS ?=
 truth-sample: tools
 	mkdir -p $(WORK)
 	$(TOOLS_RUN) python tools/ground_truth.py --repo /src/sqlglot --tests maps/tests.json \
-		--patches /sample/commits --out /work/truth-sample.json -j $(JOBS)
+		--patches /sample/commits --out /work/truth-sample.json -j $(JOBS) $(TRUTH_FLAGS)
 	python3 tools/compare_truth.py $(SAMPLE)/answers.json $(WORK)/truth-sample.json
 
 SQLGLOT_COMMIT := eb11aec4be8cb2122afe713a4816662c3f0fb2fa

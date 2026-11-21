@@ -1,0 +1,120 @@
+{
+ "manifest_version": 1,
+ "provenance": {
+  "commands": [
+   "build_maps.py --repo /src/sqlglot --tests maps/tests.json --work /work/maps -j JOBS --seed 0 --seed 1",
+   "static_index.py --repo /src/sqlglot",
+   "class_info.py --repo /src/sqlglot",
+   "build_typeprof.py --repo /src/sqlglot --tests maps/tests.json -j JOBS",
+   "subtest_cov.py --repo /src/sqlglot --test tests/test_generator.py::TestGenerator::test_generator_memory",
+   "exec_phases.py --repo /src/sqlglot",
+   "compact_maps.py --tests maps/tests.json --raw /work/maps/raw --static --classes --typeprof --subtests --exec-phases",
+   "validate_evidence.py --repo /src/sqlglot --write"
+  ],
+  "generator_sha256": {
+   "selector/exec_fingerprint.py": "f5db4b6c45de91ea63bb46797ad45fd4184c625ce414b88f2e1a31d0981cce02",
+   "tools/build_maps.py": "f4a8bfe12ae92df4b22b11fbe30c38c348732888fe9c512ef20f4e77f7d901bd",
+   "tools/build_typeprof.py": "d21564da5fb3e3586cd98d7253770c8640b94441e2c452b5fd39a2d3ffc6eb15",
+   "tools/class_info.py": "5d156a3e7c9971a6b67cd1d194b2209cdc0965f93a744a22991f7e60720a591d",
+   "tools/compact_maps.py": "6ffff758568efc2a5722f62a128e0cfaea5857d3573c335042fb901b1d7e31a1",
+   "tools/exec_phases.py": "ebeda14914e537976da290675d1a7f29ba5a80f76efe46b2cf8323749949e411",
+   "tools/ground_truth.py": "e173eff67d2ea95c21b2ad3351bfb5105a556bf40c09333c9440a4aaa0a9c847",
+   "tools/static_index.py": "16c83ab621febc3acb19fc77cdb4572ff7416adfc8ac424df7100e46a858af84",
+   "tools/subtest_cov.py": "f69939d6ee1cfe747f2947c0aa107aec76e6c64d1fa2f15b68a0d87d20e44b3e",
+   "tools/trace/br_plugin.py": "2c17e5050ad5b640972c711c2aede6612154afda43cde3a77ee0862a22df26d9",
+   "tools/trace/br_tracer.py": "a86cf1c0dd461e87d74d8cf74331cc91fe2e09de167625fec233aabb46e8bca6",
+   "tools/trace/sitecustomize.py": "82d4e353eb1b74844d1d3bd85e29de16fcc412ee843dc75d484e2db1c22d5e8e",
+   "tools/typeprof/br_typeprof.py": "7103490737317f101c1b4468278f60ec5fed235ba97235e6f950c9c1a0d2a2c2",
+   "tools/typeprof/sitecustomize.py": "b9d1b469a46df539c559ceface726efdd802c73c3aa84740c97ee01fd9207baa"
+  },
+  "image": "tools/Dockerfile.tools (labelling environment: requirements.lock, sqlglot at the pinned commit)",
+  "inputs": "pinned sqlglot source and maps/tests.json only; no answers, labels, patches or mutants",
+  "jobs": 6,
+  "make_target": "make maps",
+  "seeds": {
+   "build_maps": [
+    0,
+    1
+   ],
+   "build_typeprof": 0,
+   "class_info": "PYTHONHASHSEED=0",
+   "exec_phases": 0,
+   "static_index": "PYTHONHASHSEED=0",
+   "subtest_cov": "PYTHONHASHSEED=0"
+  },
+  "tracer_sha256": "8e2ab8cd643ff4a7bff875aca74f9c1d0a34a34674989356dc01cd59dec4f8ff"
+ },
+ "verified": {
+  "counts": {
+   "call_lines": 75213,
+   "exec_phases": {
+    "tests/test_executor.py::TestExecutor::test_execute_tpcds": 99,
+    "tests/test_executor.py::TestExecutor::test_execute_tpch": 22
+   },
+   "files": 245,
+   "ids": 1620,
+   "import_lines": 24824,
+   "mapped": 1620,
+   "sets": 10398,
+   "subtests": {
+    "tests/test_generator.py::TestGenerator::test_generator_memory": 33
+   },
+   "trusted": 1620,
+   "typeprof_incomplete": 0,
+   "typeprof_sites": 1626,
+   "unmapped": 0,
+   "untrusted": 0
+  },
+  "environment": {
+   "base_image": "python:3.13-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90",
+   "python": "3.13.18",
+   "requirements_lock_sha256": "4201e26c5e438697189dbfb809917eb8618d488a6926eee0f49858aad971d212",
+   "tools_base_image": "python:3.13-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90"
+  },
+  "maps": {
+   "format": 3,
+   "path": "maps/maps.bin",
+   "sha256": "8279999f6f8da78f31d7c9a3ac75f6ca2c5f0ecdbdb0813b9d73ccdcf7f40498",
+   "size": 715674
+  },
+  "sections": {
+   "call": "8943dbabe2e56d59e8541c5a62fe118bc5edd2076a2914e8c3eb44563f2750f3",
+   "call_at_import": "67a1e084fcdd55e4d10ef251bbaf3fa7fd240c59c6b44f0be878eaa7ae4db898",
+   "class_info": "7a30f788895738dc8320067d894606498876948b0c3391b9eb38e373e8fddeed",
+   "class_users": "9990caedf97a82351b724cd3f40c62cfaced42e5ffd5b23abaa1f5bbb4b59ee6",
+   "classes_at_import": "ce76d879209525c88890c35780ddfdae0e0999d22120e569d8a2029cd28c88f1",
+   "commit": "3b7f64768397dc99506c6d57c45fb832660525b91def8ba2c3395d1196b15f46",
+   "dynamic": "f84b7e0073b6d90f1dcdd53e9e412507558b57026faebcf0defe71aac2918719",
+   "exec_phases": "ca21a117c95304ac4e6dfb1ad9c9352d0d531de51542a6c27aeb3b71c173fbd1",
+   "files": "13d8c5c1dd2cc788a54c39ccf9930a9f9393d74d3d3522d6b0ddc4022a0aaf86",
+   "format": "4e07408562bedb8b60ce05c1decfe3ad16b72230967de01f640b7e4729b49fce",
+   "ids": "0ea4768d7a1b69045fd178e0a21159022c39a186881ebd014efa72630d30ed69",
+   "import": "bb018ec1dff5ae08e252525ef6589dd56ae3aa0267dbf7394ea0da8d649d4bed",
+   "imported": "7948b40aacda8e7d73c3e1428d610114c94c460b7d0188cb580eeac77a9cb7ce",
+   "listed": "b1732e75246fea297833c2b8451d47085c25f4cc9567649c61c29977d30ed6ed",
+   "mapped": "267e28b1164adf9cf93cda602bb7e6677d8067be24b2dde11d63d81a52df3f8e",
+   "names": "da27427532829efc40be8421a7c18475e95e448d848f0bffcc9685cce1c3b345",
+   "reads": "d6fe16392645d70c3b2016e668ec118b1d0985e1d8b9cd963583886bfcba7f5a",
+   "reads_lc": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+   "sets": "8f9f249fbd0b2d2283197654c0dd77f0b301d4b115613dd8f8d72cf904500063",
+   "subtests": "aa84fc7c7439548aa7526c1719f501dfdeab0eb7c80ce3672ac57b3f34cc8794",
+   "typeprof": "a57f8774bb640a0cc66daeaa4d73024c79e2b8e2a91754a24ade3b1a1bf26a1f",
+   "typeprof_incomplete": "98089e6d36f78e9766c9ea34d5acb3611f3a92cd81c5eb102095d924ffc7d08b",
+   "untrusted": "98089e6d36f78e9766c9ea34d5acb3611f3a92cd81c5eb102095d924ffc7d08b"
+  },
+  "source": {
+   "commit": "eb11aec4be8cb2122afe713a4816662c3f0fb2fa",
+   "repository": "tobymao/sqlglot",
+   "tree_entries": 364,
+   "tree_sha256": "5bfbb41fca66475230061c8177c6dffa6848469736c2376dd10fb9095033586a"
+  },
+  "tests": {
+   "catalog_sha256": "97a4a74dd286c8864c0093b8b09b312879a64fe9fa85e783a233206caa88aa13",
+   "ids": 1620,
+   "path": "maps/tests.json",
+   "sha256": "21257a93c58f4b0646c5122586d2141b4b340ad85b2f0bb251af3746de3f0dc2",
+   "size": 268660,
+   "skipped": 1
+  }
+ }
+}

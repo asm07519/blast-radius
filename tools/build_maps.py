@@ -79,8 +79,12 @@ def run_one(args, test, seed):
         outcome = "failed"
     elif mine and all(r[2] == "skipped" for r in mine):
         outcome = "skipped"
-    elif any(r[2] == "passed" for r in mine):
+    elif any(r[2] == "passed" for r in mine) and rc == 0:
         outcome = "passed"
+    elif any(r[2] == "passed" for r in mine):
+        # pytest did not exit cleanly (e.g. killed, rc -9, after reporting a pass): the trace
+        # may have lost shards, so the test is not trusted.
+        outcome = "unclean-exit"
     else:
         outcome = "missing"
     return {
@@ -129,25 +133,37 @@ def main():
     print(f"{len(jobs)} runs to do with {args.j} workers", file=sys.stderr)
     done = 0
     start = time.time()
+
+    def job(t, seed, out):
+        # Write the record here and return only a summary: completed futures keep their
+        # results, and 3240 full records held to the end ran the parent out of memory.
+        rec = run_one(args, t, seed)
+        with open(out + ".tmp", "w") as fh:
+            json.dump(rec, fh)
+        os.replace(out + ".tmp", out)
+        return rec["outcome"], rec["elapsed"], rec["rc"]
+
+    killed = []
     with ThreadPoolExecutor(args.j) as pool:
-        futures = {pool.submit(run_one, args, t, seed): (t, seed, out) for t, seed, out in jobs}
+        futures = {pool.submit(job, t, seed, out): (t, seed, out) for t, seed, out in jobs}
         for fut in as_completed(futures):
             t, seed, out = futures[fut]
             try:
-                rec = fut.result()
+                outcome, elapsed, rc = fut.result()
             except Exception as error:
                 print(f"error on {t['id']}: {error!r}", file=sys.stderr)
                 continue
-            with open(out + ".tmp", "w") as fh:
-                json.dump(rec, fh)
-            os.replace(out + ".tmp", out)
             done += 1
-            if done % 50 == 0 or rec["outcome"] != "passed":
+            if isinstance(rc, int) and rc < 0:
+                killed.append((t, seed, out))
+            if done % 50 == 0 or outcome != "passed":
                 rate = (time.time() - start) / done
-                print(
-                    f"[{done}/{len(jobs)} {rate:.2f}s/run] {rec['outcome']:7s} {t['id']} {rec['elapsed']}s",
-                    file=sys.stderr,
-                )
+                print(f"[{done}/{len(jobs)} {rate:.2f}s/run] {outcome:7s} {t['id']} {elapsed}s", file=sys.stderr)
+    # A run killed by a signal (rc -9: the kernel's OOM killer when parallel jobs exceed the
+    # memory, e.g. test_max_nodes) says nothing about the test: rerun those once, alone.
+    for t, seed, out in killed:
+        outcome, elapsed, rc = job(t, seed, out)
+        print(f"[retry alone] {outcome:7s} {t['id']} seed {seed} rc {rc} {elapsed}s", file=sys.stderr)
 
 
 if __name__ == "__main__":

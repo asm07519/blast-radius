@@ -1,158 +1,135 @@
 # M0 runbook: fully traced maps, local sample, practice measurement
 
-Goal (PRD §10 M0): commit fully traced `maps/maps.bin`, confirm the image scores ≈120.8 s
-simulated with 0 misses on the sample, and record what the server reports for HEAD.
+Goal (PRD §10 M0): commit fully traced `maps/maps.bin` + `maps/manifest.json`, confirm the
+image scores ≈118.6 s simulated with 0 misses on the sample, record what the server reports.
 
 Nothing here pushes or submits. **Pushing and submitting are the owner's decisions.**
-Run everything from the checkout you intend to commit from (not an agent worktree).
-Durations on this Mac (Apple Silicon, `linux/amd64` emulated) are estimates; none were measured.
 
-## a. Start Docker and check it
+**Verified 2026-11-21** on Apple Silicon, Docker Desktop (18 CPUs, 7.7 GiB VM, Rosetta, cgroup v2),
+everything `linux/amd64` emulated, with ~14 host cores busy with other jobs. Every duration and
+CPU number below is from that setup: inflated, and only an upper bound for the server.
+Use distinct `IMAGE=`/`TOOLS=` tags when other jobs share the Docker daemon.
+
+## a. Docker
 
 ```sh
-open -a Docker                 # wait until the whale icon says "Docker Desktop is running"
-docker info --format 'cpus={{.NCPU}} mem={{.MemTotal}} cgroup=v{{.CgroupVersion}} os={{.OperatingSystem}}'
-docker run --rm --platform linux/amd64 python:3.13-slim python -c 'import platform; print(platform.machine())'
+docker info --format 'cpus={{.NCPU}} mem={{.MemTotal}} cgroup=v{{.CgroupVersion}}'
 ```
 
-Expect `cgroup=v2`, at least 4 CPUs and 8 GB (Settings > Resources), and `x86_64`.
-Turn on Settings > General > "Use Rosetta for x86_64/amd64 emulation": under QEMU everything
-below is several times slower and the time limits in section "Pitfalls" start to bite.
-Failure: `failed to connect to the docker API ... docker.sock` means the daemon is not up yet.
+Expect `cgroup=v2`, ≥4 CPUs, ~8 GB. Use Rosetta (Settings > General). Memory, not CPU, is the
+limit: one traced pytest with duckdb/pandas peaks at ~0.8 GB (test_max_nodes ~2-3 GB), and
+duckdb starts a thread per VM CPU in each process.
 
-`make` uses `JOBS` = the Docker VM's CPU count (`docker info`), else `nproc`/`sysctl hw.ncpu`.
-Override with `make maps JOBS=6` if the VM runs out of memory (one traced pytest per job).
-
-## b. Fully traced maps
+## b. Fully traced maps (`make maps`)
 
 ```sh
-python3 tools/map_stats.py maps/maps.bin          # before: ids 1620, mapped 1620, untrusted 37
-ls work/maps/raw 2>/dev/null | head -1             # must be empty/missing, see note
-time make maps 2>&1 | tee work/maps.log           # estimate 20-60 min emulated (README: 5-10 min native)
+rm -rf work/maps                                   # resume trap: stale raw traces are reused
+time make maps JOBS=6 2>&1 | tee work/maps.log     # JOBS=8 peaked at 7.2 GiB; 18 is OOM
 python3 tools/map_stats.py maps/maps.bin --check && echo FULLY-TRACED
+make validate SRC=/path/to/pinned/sqlglot          # host-side, no Docker
 ```
 
-Expected end of the log: `... 1620 mapped, 0 untrusted, ...` from `compact_maps.py`.
-`map_stats.py` must print `untrusted 0`, `mapped 1620`, one `subtests` entry
-(`test_generator_memory`) and two `exec` entries (`test_execute_tpch`, `test_execute_tpcds`);
-an empty list there means that step's test did not pass and its replay is silently disabled.
+Measured step times (`[maps] <step> done in Ns` lines): trace 3240 runs ≈ 29 min total at 6-8
+jobs (≈0.5 s/run once the slow tests are done; test_max_nodes ≈ 50-130 s per seed), static 7 s,
+classes 1 s, typeprof 122 s, subtests 3 s, exec_phases 37 s, compact 61 s, manifest 1 s.
+Expected end of the log:
 
-**Resume trap:** `build_maps.py` skips every test that already has `work/maps/raw/<n>.s<seed>.json`,
-including ones recorded as failed. A stale `work/maps/` (e.g. from a stub build) is reused as is.
-For a clean build run `rm -rf work/maps` first; to retry only failures, delete those tests' raw
-files (`grep -l '"outcome": "failed"' work/maps/raw/*.json`) and rerun `make maps`.
+```
+1620 tests traced, 1620 mapped, 0 untrusted, 245 files, 75213 call lines, 24824 import lines, ...
+[evidence] wrote maps/manifest.json.new: maps 8279999f6f8d, 1620 ids, 0 untrusted
+untrusted 0 / typeprof 0 incomplete / subtests [test_generator_memory] / exec [tpcds, tpch]
+```
 
-Failures:
-* `make maps` **exits 0 even with untrusted tests.** Only `--check` (exit 1) or the
-  `N untrusted` line tells you. The log shows each non-passing run as
-  `[k/3240 ...] failed  tests/...`; its pytest tail is in the raw JSON (`"tail"`).
-* A per-test timeout is 900 s (`test_max_nodes` is 28.8 s native, slower traced and emulated);
-  a timed-out test is recorded as failed, i.e. untrusted.
-* `build_typeprof.py` raises `TimeoutExpired` after 3600 s, or `exec_phases.py` exits with
-  `cheap phase failed` / `phase ... failed`: `make` stops and `maps/maps.bin` is left unchanged
-  (the new file is written as `maps/maps.bin.new` and renamed only at the end).
+`make maps` exits 0 even with untrusted tests: only `--check` / `make validate` (exit 1) tell you.
+Non-passing runs show as `[k/N ...] missing|failed|unclean-exit tests/...`; `rc -9` in the raw
+JSON is the OOM killer. Such runs are retried once alone (`[retry alone] ...`); if one still
+fails, delete its `work/maps/raw/<n>.s<seed>.json` and rerun `make maps` (only it is retraced,
+the other steps rerun, ~5 min). The generator does not mount `sample/`.
 
-Commit (local only, on the branch the owner chooses):
+Commit maps/maps.bin and maps/manifest.json together (local only; the owner picks the branch).
+
+## c. Image build, sample run, CPU
 
 ```sh
-shasum -a 256 maps/maps.bin
-git add maps/maps.bin && git commit -m "Fully traced maps (make maps): 0 untrusted"
+make build                    # with complete maps: ~7 s here (base image cached)
+make sample-cpu               # 3 times; the board takes the middle total
+make map-stats                # committed maps, then the maps inside the image
 ```
 
-## c. Sample run and CPU
-
-```sh
-make sample-cpu 2>&1 | tee work/sample.log         # estimate 3-8 min incl. build; run itself < 3 min
-make map-stats                                     # committed maps, then the maps inside the image
-```
-
-`sample-cpu` is `make sample` plus CPU: it runs the image with the scorer's flags, wrapped as
-`sh -c 'python -I -S /app/run.py; cat /sys/fs/cgroup/cpu.stat >&2'`. With cgroup v2 the
-container's `cpu.stat` `usage_usec` is user + system CPU of every process in the container,
-which is what SCORING.md charges, and it is passed to `score.py --cpu-seconds`.
-(`time docker run ...` only measures the client; `docker stats` samples and misses short runs.)
-Run it 3 times and take the median, like the board.
-
-Read the result:
+Build log, `--progress=plain` (a `CACHED` step prints nothing; `--no-cache` to see it again):
 
 ```
-[br] maps: 1620 tests, 0 untrusted, 0 unmapped     # 37 untrusted here = build repair failed
-[br] done: 30 commits in Xs wall, Ys cpu           # Y = selector process only
-usage_usec ...                                     # whole container
-Simulated: 120.8 s      Misses: 0 (...)      CPU: ... s      Total: ... s
+[evidence] note: environment.base_image not checked (file not under --root)
+[evidence] ok: 1620 ids, 1620 mapped, 0 untrusted, 0 type-profile incomplete
+[finish] 0 untrusted tests
 ```
 
-* Expected: Simulated ≈120.8 s, 0 misses (README, trusted maps). 565.8 s means 37 tests are
-  still untrusted. Any miss is a stop: do not submit.
-* Emulated CPU overstates the server's (Rosetta translation); treat it as an upper bound.
-  The PRD's ≈4.4 s figure was local Mac CPU.
-* If Simulated is above 120.8 with trusted maps, grep `work/sample.stderr` for
-  `replica did not pass; kept` / `executor fingerprints changed; kept`: under emulation the
-  replicas can exceed their 8 s / 12 s timeouts or the 80 s replay budget, which keeps tests
-  that the server would drop. Not a selector bug by itself.
-* `Rejected: ...` or a non-zero exit from `docker run` is a stop.
+Any `[evidence] ERROR` / `FAILED` fails the build: the committed maps do not match
+`maps/manifest.json` (stale, corrupted, or built for another catalog/tree/lock file); rerun
+`make maps`. Image: 64.9 MB (content size), was 182 MB when the repair step had installed
+`requirements.lock`.
 
-**Build repair (only while committed maps still have untrusted tests).** `make build` now uses
-`--progress=plain`; in the `RUN python /app/tools/finish_maps.py` step look for:
+`sample-cpu` runs the image with the scorer's flags, wrapped as
+`sh -c 'python -I -S /app/run.py; cat /sys/fs/cgroup/cpu.stat >&2'`. Verified: as user 65534
+under `--read-only --cap-drop ALL` the container sees its own cgroup (`/proc/self/cgroup` is
+`0::/`), `cpu.stat` is world-readable, and `usage_usec` (user + system of every process in the
+container) matched a 2 s busy loop. `SAMPLE_ENV="-e FLAG=1 ..."` passes env flags.
 
-| Line | Meaning |
-| --- | --- |
-| `[finish] 0 untrusted tests` | maps fully traced; step is a no-op (no pip install) |
-| `[finish] 37 untrusted tests` ... `37 tests traced, 1620 mapped, 0 untrusted` ... `[finish] merged in Ns` | repair succeeded |
-| `budget reached; merging what finished` | partial: count in the `compact_maps` line |
-| `dependencies missing`, `... timed out; keeping maps`, `... failed; keeping maps`, `skipped after error` | no repair: image keeps 37 untrusted |
+Measured (emulated, busy host):
 
-A `CACHED` step prints nothing: `make map-stats` (second half) is the authoritative count, or
-rebuild with `docker build --no-cache --progress=plain --platform linux/amd64 -t blast-radius-entry .`.
-The repair's budget is 200 s for pip install + retrace, plus up to 30+30+60 s for the index
-steps; emulated on this Mac it may run out and leave some tests untrusted even though the
-native server build repairs all of them (PRD §1). The repair also keeps the stub-built type
-profile, subtest windows and executor phases from the base maps; only `make maps` rebuilds them.
+| image / maps | flags | simulated | CPU s | total | misses | run wall |
+| --- | --- | --- | --- | --- | --- | --- |
+| committed maps before M0 (37 untrusted, repair failed) | | 565.751 | 45.4 | 611.2 | 0 | 45 s |
+| fully traced maps, 3 runs | | 118.628 | 7.27 / 7.36 / 7.28 | **125.904** middle | 0 | 6.7-6.9 s |
+| fully traced maps, 3 runs | `BR_LITERAL_GUARD=1 BR_LITERAL_PROBE=1` | 118.628 | 9.70 / 9.70 / 9.53 | 128.333 middle | 0 | 9.1-9.3 s |
 
-`make truth-sample` (optional, estimate 30-90 min emulated): must end `30 commits agree, 0 differ`.
-It exits 0 even when commits differ. Per-test timeout is 120 s, so under emulation
-`ours only [1490]` (`test_max_nodes`) or `[1106]` (`test_execute_tpcds`) on many commits means a
-timeout, not a label disagreement.
+Emulated CPU includes Rosetta translation (system time ≈ 40% of a busy loop): treat it as an
+upper bound. The selector's own `[br] done: ... 0.78s cpu` excludes its replica children.
+Grep `work/sample.stderr` for `replica did not pass; kept` / `executor fingerprints changed; kept`
+if simulated is above 118.6 s with trusted maps.
+
+**Build-time repair** (`tools/finish_maps.py`, only while committed maps have untrusted tests):
+with the old maps it did not work here: `37 untrusted tests` → `budget reached; merging what
+finished` → `retraced 18 tests in 221s` → `static_index.py timed out; keeping maps` (the image kept
+37 untrusted; build 5:48). Causes, now fixed: 18 parallel jobs OOM-killed the traced tests (rc -9,
+counted untrusted), and the budget timeout left their pytest processes running. The server builds
+natively on 4 cores, so it was likely unaffected (PRD §1). With complete maps the step is a no-op.
+
+`make truth-sample JOBS=6` (labeller in the tools image, must end `30 commits agree, 0 differ`;
+exits 0 either way): see the result recorded in the M0 report. Lost/timed-out chunks show as
+`ours only [...]`; raise the per-test timeout with `TRUTH_FLAGS="--test-timeout 600"`.
 
 ## d. Practice submission record (owner submits)
 
 Before submitting, record:
 
 ```sh
-git rev-parse HEAD HEAD^{tree}                                   # source digests
-shasum -a 256 maps/maps.bin                                      # committed map digest
-docker image inspect --format '{{.Id}}' blast-radius-entry       # local image id
-docker run --rm --platform linux/amd64 blast-radius-entry \
-  python /app/tools/map_stats.py /app/maps/maps.bin              # in-image map sha + untrusted
+git rev-parse HEAD HEAD^{tree}
+shasum -a 256 maps/maps.bin && make validate
+docker image inspect --format '{{.Id}}' blast-radius-entry
+docker run --rm --platform linux/amd64 blast-radius-entry python /app/tools/map_stats.py /app/maps/maps.bin
 ```
 
 From the board, for **each of the 3 runs**: simulated, CPU, misses, total; plus the median total
-and the time of submission. Valid only if all three runs are valid with 0 misses.
+and the submission time. Valid only if all three runs are valid with 0 misses.
 
 Re-derive the gate (PRD §8), with S = server practice simulated (median run), C = its CPU,
-and 40 practice commits (inferred, not confirmed):
+40 practice commits (inferred):
 
 ```
-r               = S / 120.8                  # practice batch vs sample, same image
-practice floor  F ≈ 94.351 * r               # sample zero-miss floor scaled
-excess/commit   = (S + C - F) / 40           # compare with ≈1.03 s/commit expected for HEAD
-release gate    = F + 0.2 * 40 = F + 8.0 s   # practice total; sample equivalent stays 100.4 s
-2x target 119 s : feasible only if F < ≈115 s; sample-equivalent target = 119 / r
+r               = S / 118.628                # practice batch vs sample, same image
+practice floor  F ≈ 94.351 * r
+excess/commit   = (S + C - F) / 40
+release gate    = F + 0.2 * 40 = F + 8.0 s
 ```
 
 Write the measured r, F and gate back into PRD §8 in place of the estimates.
 
-## Pitfalls checked statically
+## Pitfalls
 
-* Fixed: `JOBS ?= $(shell nproc)` gave an empty `-j` on a Mac without coreutils
-  (`build_maps.py: argument -j: expected one argument`); and with Homebrew `nproc` it gave the
-  host's 18 CPUs, not the VM's. Now the VM count first. `docker info` prints `0` while the
-  daemon is down; that value is ignored.
-* Fixed: `make maps` wrote `maps/maps.bin` in place; now via `maps/maps.bin.new` + rename.
-* Fixed: BuildKit's default progress hid the repair output; `make build` uses `--progress=plain`.
-* Documented: resume of stale `work/maps/raw`; `make maps` and `make truth-sample` exit 0 on
-  untrusted maps or disagreeing labels; emulation vs 900 s / 120 s / 200 s / 8 s / 12 s limits.
-* Documented: there is no `.dockerignore`, so `work/` (venvs, sqlglot copies, ~260 MB) is sent
-  as build context on every build. Slow, not incorrect: the Dockerfile copies only
-  `requirements.lock`, `tools`, `maps`, `selector`, `run.py`, so `sample/answers.json` never
-  enters the image.
+* `make maps` / `make truth-sample` exit 0 on untrusted maps or disagreeing labels.
+* Resume: `build_maps.py` skips every test with a raw file, including failed ones.
+* `JOBS` defaults to the VM's CPU count (18 here): too many for 8 GB. Pass `JOBS=6`.
+* `make sample-cpu` depends on `build`: editing anything under `tools/` reruns the repair step.
+* The labeller and the type profile run the suite in `JOBS` contiguous chunks: their results
+  can depend on `JOBS` (state carried between tests inside a chunk).
