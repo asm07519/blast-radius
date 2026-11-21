@@ -7,7 +7,9 @@ hand-built maps file, exactly as the image runs it.
     python3 -m unittest discover -s tests -t .
 """
 
+import base64
 import contextlib
+import hashlib
 import importlib.machinery
 import io
 import json
@@ -107,11 +109,11 @@ def fp(old, new=None, mode_only=False, binary=False, copy=False):
     return f
 
 
-def result(paths, call=True, imports=False, ok=True):
+def result(paths, call=True, imports=False, ok=True, new=b"X = 2\n"):
     r = Result()
     r.replica_ok = ok
     for p in paths:
-        r.patched[p] = b"X = 2\n"
+        r.patched[p] = new
     if call:
         r.call_sites.append((paths[0] if paths else "sqlglot/a.py", {2}))
     if imports:
@@ -396,22 +398,53 @@ class FakeExecute:
         self.outcomes, self.rc, self.timed_out, self.cpu = outcomes or {}, rc, timed_out, cpu
         self.flags, self.raises, self.ret = list(flags), raises, ret
         self.calls = []
+        self.kwargs = []  # keyword arguments of each call (hash_seed, cpu_count)
+        self.during = None  # optional callable(spec, kwargs) run inside each call
 
-    def __call__(self, spec, timeout):
+    def __call__(self, spec, timeout, **kwargs):
         self.calls.append((spec, timeout))
+        self.kwargs.append(kwargs)
+        if self.during:
+            self.during(spec, kwargs)
         if self.raises:
             raise self.raises
         if self.ret is not None:
             return self.ret
         ids = [t["id"] for t in spec["tests"]]
-        outcomes = {i: self.outcomes.get(i, "passed") for i in ids}
+        outcomes = {i: self.outcome(i, kwargs) for i in ids}
         lines = {i: {"id": i, "outcome": o, "flags": self.flags} for i, o in outcomes.items()
                  if o in m0.OUTCOMES}
         return {"outcomes": outcomes, "returncode": self.rc, "cpu": self.cpu, "wall": 0.3,
                 "timed_out": self.timed_out, "done": {"done": True}, "lines": lines}
 
+    def outcome(self, tid, kwargs):
+        o = self.outcomes.get(tid, "passed")
+        if isinstance(o, dict):  # per hash seed: {seed: outcome}
+            o = o.get(kwargs.get("hash_seed"), "passed")
+        return o
 
-class SessionTest(TmpDir):
+
+# sqlglot/a.py of the session tests: "def f():\n    return 1\n" -> "...return 2\n", exactly.
+A_PATCH = b"""diff --git a/sqlglot/a.py b/sqlglot/a.py
+--- a/sqlglot/a.py
++++ b/sqlglot/a.py
+@@ -1,2 +1,2 @@
+ def f():
+-    return 1
++    return 2
+"""
+A_NEW = b"def f():\n    return 2\n"
+
+
+def a_result(**kw):
+    return result(["sqlglot/a.py"], new=A_NEW, **kw)
+
+
+def a_fps():
+    return parse(A_PATCH)
+
+
+class SessionBase(TmpDir):
     def setUp(self):
         super().setUp()
         self.src = os.path.join(self.tmp, "src")
@@ -435,12 +468,14 @@ class SessionTest(TmpDir):
                              execute=execute, clock=lambda: self.now)
 
     def verify(self, s, selected, res=None, fps=None):
-        res = res or result(["sqlglot/a.py"])
-        return s.verify("c1", set(selected), res, fps or [fp("sqlglot/a.py")], self.ms)
+        res = res or a_result()
+        return s.verify("c1", set(selected), res, fps or a_fps(), self.ms)
 
     def ids(self, nums):
         return [self.tests[n]["id"] for n in nums]
 
+
+class SessionTest(SessionBase):
     def test_all_pass_dropped(self):
         ex = FakeExecute()
         s = self.session(ex)
@@ -499,7 +534,7 @@ class SessionTest(TmpDir):
             json.dump(elig_file(tests, self.src), fh)
         ex = FakeExecute()
         s = self.session(ex, tests=tests)
-        s.verify("c", {0, 1, 2, 3, 4, 5}, result(["sqlglot/a.py"]), [fp("sqlglot/a.py")], self.ms)
+        s.verify("c", {0, 1, 2, 3, 4, 5}, a_result(), a_fps(), self.ms)
         self.assertEqual([t["id"] for t in ex.calls[0][0]["tests"]], [t["id"] for t in tests])
 
     def test_only_eligible_candidates_run(self):
@@ -522,7 +557,7 @@ class SessionTest(TmpDir):
     def test_contract_failure_no_run(self):
         ex = FakeExecute()
         s = self.session(ex)
-        self.assertEqual(self.verify(s, {0, 1}, res=result(["sqlglot/a.py"], ok=False)), {0, 1})
+        self.assertEqual(self.verify(s, {0, 1}, res=a_result(ok=False)), {0, 1})
         self.assertEqual(ex.calls, [])
         self.assertIsNone(s._elig)  # eligibility is not even loaded
 
@@ -580,7 +615,7 @@ class SessionTest(TmpDir):
     def test_unknown_overlay(self):
         ex = FakeExecute()
         s = self.session(ex)
-        got = s.verify("c", {0}, result(["sqlglot/a.py"]), [fp("sqlglot/a.py")], self.ms, overlay="fs")
+        got = s.verify("c", {0}, a_result(), a_fps(), self.ms, overlay="fs")
         self.assertEqual(got, {0})
         self.assertEqual(ex.calls, [])
 
@@ -594,6 +629,550 @@ class SessionTest(TmpDir):
                                          env=dict(on, BR_MODE0_SITE=os.path.join(self.tmp, "nope"))))
         self.assertIsNone(mode0.from_env(self.tests, self.src, 0, 80, 140, self.logs.append,
                                          env=dict(on, BR_MODE0_P="2")))
+
+
+    def test_flags_off_execute_sequence(self):
+        """No new flag: one positional call per attempt, no keyword arguments, same spec."""
+        ex = FakeExecute(outcomes={self.tests[1]["id"]: "failed"})
+        s = self.session(ex)
+        self.assertEqual(self.verify(s, {0, 1, 2}), {1})
+        self.assertEqual(len(ex.calls), 1)
+        self.assertEqual(ex.kwargs, [{}])
+        spec, timeout = ex.calls[0]
+        self.assertEqual(list(spec), ["kind", "src", "patched", "engine", "site", "startup_cap", "tests"])
+        self.assertEqual(spec["patched"], {"sqlglot.a": [os.path.join(os.path.realpath(self.src), "sqlglot/a.py"),
+                                                        base64.b64encode(A_NEW).decode()]})
+        self.assertEqual(spec["tests"], [{"id": i, "cap": 2.0} for i in self.ids([0, 1, 2])])
+        self.assertAlmostEqual(timeout, 10.0 + 6.0 + 2.0)
+        # The estimate is the legacy one: 1.5 * (max(proc - cpu) + sum(cpu)).
+        self.assertTrue(any("cpu~0.180" in line for line in self.logs), self.logs)
+
+
+# --------------------------------------------------------------- exact application (BR_MODE0_EXACT)
+
+OLD = b"".join(b"line %d\n" % i for i in range(1, 21))
+
+
+def one_file_patch(body, path="sqlglot/a.py"):
+    return parse(b"diff --git a/%s b/%s\n--- a/%s\n+++ b/%s\n" % ((path.encode(),) * 4) + body)[0]
+
+
+class ExactApplyTest(unittest.TestCase):
+    def test_exact(self):
+        fp_ = one_file_patch(b"@@ -4,3 +4,3 @@\n line 4\n-line 5\n+LINE 5\n line 6\n")
+        self.assertEqual(mode0.exact_apply(fp_, OLD), OLD.replace(b"line 5\n", b"LINE 5\n"))
+        two = one_file_patch(b"@@ -1,2 +1,2 @@\n-line 1\n+LINE 1\n line 2\n"
+                             b"@@ -19,2 +19,3 @@\n line 19\n line 20\n+line 21\n")
+        self.assertEqual(mode0.exact_apply(two, OLD),
+                         OLD.replace(b"line 1\n", b"LINE 1\n", 1) + b"line 21\n")
+
+    def test_offset_hunk_refused(self):
+        from selector.patch import apply
+
+        fp_ = one_file_patch(b"@@ -6,3 +6,3 @@\n line 4\n-line 5\n+LINE 5\n line 6\n")  # really at 4
+        self.assertIsNotNone(apply(fp_, OLD))  # patch.apply finds it 2 lines up
+        self.assertIsNone(mode0.exact_apply(fp_, OLD))
+
+    def test_crlf_tolerant_match_refused(self):
+        from selector.patch import apply
+
+        crlf = OLD.replace(b"\n", b"\r\n")
+        fp_ = one_file_patch(b"@@ -4,3 +4,3 @@\n line 4\n-line 5\n+LINE 5\n line 6\n")
+        self.assertIsNotNone(apply(fp_, crlf))  # last-resort line-ending tolerance
+        self.assertIsNone(mode0.exact_apply(fp_, crlf))
+        crlf_patch = one_file_patch(b"@@ -4,3 +4,3 @@\r\n line 4\r\n-line 5\r\n+LINE 5\r\n line 6\r\n")
+        self.assertIsNone(mode0.exact_apply(crlf_patch, crlf))  # any CR is refused
+
+    def test_fuzzy_context_refused(self):
+        fp_ = one_file_patch(b"@@ -4,3 +4,3 @@\n line  4\n-line 5\n+LINE 5\n line 6\n")
+        self.assertIsNone(mode0.exact_apply(fp_, OLD))
+        fp_ = one_file_patch(b"@@ -4,3 +4,3 @@\n line 4 \n-line 5\n+LINE 5\n line 6\n")
+        self.assertIsNone(mode0.exact_apply(fp_, OLD))
+
+    def test_shapes_git_rejects(self):
+        cases = {
+            "header counts": b"@@ -4,4 +4,4 @@\n line 4\n-line 5\n+LINE 5\n line 6\n",
+            "no trailing context, not at EOF": b"@@ -3,3 +3,3 @@\n line 3\n line 4\n-line 5\n+LINE 5\n",
+            "pure insertion": b"@@ -4,0 +5,1 @@\n+new\n",
+            "overlapping hunks": b"@@ -4,3 +4,3 @@\n line 4\n-line 5\n+LINE 5\n line 6\n"
+                                 b"@@ -5,3 +5,3 @@\n line 5\n-line 6\n+LINE 6\n line 7\n",
+            "past EOF": b"@@ -19,3 +19,3 @@\n line 19\n-line 20\n+LINE 20\n line 21\n",
+        }
+        for why, body in cases.items():
+            with self.subTest(why=why):
+                self.assertIsNone(mode0.exact_apply(one_file_patch(body), OLD))
+        at_eof = one_file_patch(b"@@ -18,3 +18,3 @@\n line 18\n line 19\n-line 20\n+LINE 20\n")
+        self.assertEqual(mode0.exact_apply(at_eof, OLD), OLD.replace(b"line 20\n", b"LINE 20\n"))
+
+    def test_no_newline_at_eof(self):
+        old = b"a\nb\nc"
+        fp_ = one_file_patch(b"@@ -1,3 +1,3 @@\n a\n b\n-c\n\\ No newline at end of file\n+C\n"
+                             b"\\ No newline at end of file\n")
+        self.assertEqual(mode0.exact_apply(fp_, old), b"a\nb\nC")
+        self.assertIsNone(mode0.exact_apply(fp_, b"a\nb\nc\n"))
+
+
+class ExactProblemTest(TmpDir):
+    def setUp(self):
+        super().setUp()
+        os.makedirs(os.path.join(self.tmp, "sqlglot"))
+        with open(os.path.join(self.tmp, "sqlglot", "a.py"), "wb") as fh:
+            fh.write(OLD)
+
+    def problem(self, body, new):
+        fp_ = one_file_patch(body)
+        res = result(["sqlglot/a.py"], new=new)
+        return mode0.exact_problem([fp_], res, self.tmp)
+
+    def test_exact_admitted(self):
+        body = b"@@ -4,3 +4,3 @@\n line 4\n-line 5\n+LINE 5\n line 6\n"
+        self.assertIsNone(self.problem(body, OLD.replace(b"line 5\n", b"LINE 5\n")))
+
+    def test_refusals(self):
+        body = b"@@ -4,3 +4,3 @@\n line 4\n-line 5\n+LINE 5\n line 6\n"
+        self.assertIn("differ", self.problem(body, OLD.replace(b"line 5\n", b"LINE 6\n")))
+        self.assertIn("exactly", self.problem(b"@@ -7,3 +7,3 @@\n line 4\n-line 5\n+LINE 5\n line 6\n", OLD))
+        self.assertIn("unchanged", self.problem(b"@@ -4,3 +4,3 @@\n line 4\n-line 5\n+line 5\n line 6\n", OLD))
+        mode_only = FilePatch()
+        mode_only.old_path = mode_only.new_path = "sqlglot/a.py"
+        mode_only.mode_only = True
+        self.assertIsNotNone(mode0.exact_problem([mode_only], result(["sqlglot/a.py"]), self.tmp))
+        with open(os.path.join(self.tmp, "sqlglot", "a.py"), "wb") as fh:
+            fh.write(OLD.replace(b"line 9\n", b"line 9\r\n"))
+        self.assertIn("CR", self.problem(body, OLD.replace(b"line 5\n", b"LINE 5\n")))
+
+    def test_session_refuses_inexact(self):
+        """BR_MODE0_EXACT is on by default; =0 restores the old (patch.apply) contract."""
+        src = os.path.join(self.tmp, "src")
+        write_tree(src, {"sqlglot/__init__.py": "", "tests/__init__.py": "", "tests/test_x.py": ""})
+        with open(os.path.join(src, "sqlglot", "a.py"), "wb") as fh:
+            fh.write(OLD)
+        tests = catalog(2)
+        elig = os.path.join(self.tmp, "e.json")
+        with open(elig, "w") as fh:
+            json.dump(elig_file(tests, src), fh)
+        offset = one_file_patch(b"@@ -6,3 +6,3 @@\n line 4\n-line 5\n+LINE 5\n line 6\n")
+        new = OLD.replace(b"line 5\n", b"LINE 5\n")
+        ms = {0: 10, 1: 10}
+        for exact, runs in (("1", 0), ("", 0), ("0", 1)):
+            with self.subTest(exact=exact):
+                ex, logs = FakeExecute(), []
+                env = {"BR_MODE0_ELIG": elig, "BR_MODE0_SITE": self.tmp, "BR_MODE0_EXACT": exact}
+                s = mode0.Session(mode0.Config(env), tests, src, 0.0, 80.0, 140.0, logs.append,
+                                  execute=ex, clock=lambda: 1.0)
+                s.verify("c", {0}, result(["sqlglot/a.py"], new=new), [offset], ms)
+                self.assertEqual(len(ex.calls), runs, logs)
+
+
+# ------------------------------------------------------------------------ no-site shape (NOSITE)
+
+class NoSiteTest(SessionBase):
+    def test_contract(self):
+        res = a_result(call=False)
+        self.assertEqual(mode0.contract(a_fps(), res, self.src), "no call/import site")
+        self.assertIsNone(mode0.contract(a_fps(), res, self.src, allow_no_site=True))
+        # Everything else still holds under the flag.
+        self.assertIsNotNone(mode0.contract(a_fps(), a_result(call=False, ok=False), self.src, allow_no_site=True))
+        empty = Result()
+        self.assertIsNotNone(mode0.contract(a_fps(), empty, self.src, allow_no_site=True))
+
+    def test_session(self):
+        for flag, runs in (("", 0), ("1", 1)):
+            with self.subTest(flag=flag):
+                ex = FakeExecute()
+                s = mode0.Session(mode0.Config({"BR_MODE0_ELIG": self.elig, "BR_MODE0_SITE": self.site,
+                                                "BR_MODE0_NOSITE": flag}),
+                                  self.tests, self.src, self.now, 80.0, 140.0, self.logs.append,
+                                  execute=ex, clock=lambda: self.now)
+                got = s.verify("c", {0, 1, 2}, a_result(call=False), a_fps(), self.ms)
+                self.assertEqual(len(ex.calls), runs)
+                self.assertEqual(got, {0, 1, 2} if not runs else set())
+
+    @unittest.skipUnless(os.path.isdir(os.path.join(os.environ.get("BR_SRC", "/nonexistent"), "sqlglot")),
+                         "set BR_SRC to the pinned sqlglot checkout")
+    def test_sample_2haz(self):
+        """2haz: an is/== swap proven a no-op; nothing but the selection's sources are patched."""
+        from selector.impact import commit_impact
+        from selector.maps import Maps
+
+        src = os.environ["BR_SRC"]
+        with open(os.path.join(ROOT, "sample", "commits", "2haz.patch"), "rb") as fh:
+            fps = parse(fh.read())
+        res = commit_impact(fps, src, Maps(os.path.join(ROOT, "maps", "maps.bin")))
+        self.assertFalse(res.call_sites or res.import_files)
+        self.assertTrue(res.bits)
+        self.assertEqual(mode0.contract(fps, res, src), "no call/import site")
+        self.assertIsNone(mode0.contract(fps, res, src, allow_no_site=True))
+        self.assertIsNone(mode0.exact_problem(fps, res, src))
+
+
+# ------------------------------------------------------------------------- hash seeds (SEEDS)
+
+class SeedsTest(SessionBase):
+    def setUp(self):
+        super().setUp()
+        runs = [{"name": "iso", "hash_seed": "random"}, {"name": "seed0", "hash_seed": 0},
+                {"name": "seed1", "hash_seed": 1}]
+        with open(self.elig, "w") as fh:
+            json.dump(elig_file(self.tests, self.src, runs=runs), fh)
+
+    def seeded(self, ex, seeds="0,1", **over):
+        env = {"BR_MODE0_ELIG": self.elig, "BR_MODE0_SITE": self.site, "BR_MODE0_SEEDS": seeds}
+        env.update({mode0.TUNABLES[k][0]: str(v) for k, v in over.items()})
+        return mode0.Session(mode0.Config(env), self.tests, self.src, self.now, 80.0, 140.0, self.logs.append,
+                             execute=ex, clock=lambda: self.now)
+
+    def test_parse(self):
+        self.assertEqual(mode0.parse_seeds(""), [])
+        self.assertEqual(mode0.parse_seeds(None), [])
+        self.assertEqual(mode0.parse_seeds(" 0, 1 "), [0, 1])
+        self.assertEqual(mode0.parse_seeds("0 1"), [0, 1])
+        for bad in ("x", "-1", "0,0", "1.5", str(2 ** 32), "0,,1", "0 1,2", "0 0"):
+            with self.subTest(bad=bad):
+                with self.assertRaises(ValueError):
+                    mode0.parse_seeds(bad)
+        self.assertEqual(mode0.Config({}).runs, [None])
+        self.assertEqual(mode0.Config({"BR_MODE0_SEEDS": "1,0"}).runs, [1, 0])
+
+    def test_dropped_only_if_passed_under_every_seed(self):
+        t = self.ids([0, 1, 2, 3])
+        ex = FakeExecute(outcomes={t[1]: {0: "failed"}, t[2]: {1: "failed"}})
+        got = self.verify(self.seeded(ex), {0, 1, 2, 3})
+        self.assertEqual(got, {1, 2})
+        self.assertEqual(ex.kwargs, [{"hash_seed": 0}, {"hash_seed": 1}])
+        self.assertEqual([x["id"] for x in ex.calls[0][0]["tests"]], t)
+        self.assertEqual([x["id"] for x in ex.calls[1][0]["tests"]], [t[0], t[2], t[3]])  # survivors only
+
+    def test_nothing_passed_no_later_seed(self):
+        ex = FakeExecute(outcomes={i: "failed" for i in self.ids([0, 1])})
+        self.assertEqual(self.verify(self.seeded(ex), {0, 1}), {0, 1})
+        self.assertEqual(ex.kwargs, [{"hash_seed": 0}])
+
+    def test_run_failure_in_later_seed_keeps_all(self):
+        calls = []
+
+        def boom(spec, kwargs):
+            calls.append(kwargs)
+            if kwargs.get("hash_seed") == 1:
+                raise OSError("no fork")
+
+        ex = FakeExecute()
+        ex.during = boom
+        self.assertEqual(self.verify(self.seeded(ex), {0, 1}), {0, 1})
+        self.assertEqual(len(calls), 2)
+
+    def test_uncertified_seed_refused(self):
+        ex = FakeExecute()
+        s = self.seeded(ex, seeds="0,7")
+        self.assertEqual(self.verify(s, {0, 1}), {0, 1})
+        self.assertEqual(ex.calls, [])
+        self.assertIn("seed 7 not certified", s.off)
+        # A run named seed<N> whose recorded hash seed differs is not a certification of N.
+        with open(self.elig, "w") as fh:
+            json.dump(elig_file(self.tests, self.src, runs=[{"name": "iso"}, {"name": "seed0", "hash_seed": 5},
+                                                          {"name": "seed1", "hash_seed": 1}]), fh)
+        s = self.seeded(FakeExecute(), seeds="0")
+        self.assertEqual(self.verify(s, {0}), {0})
+        self.assertIsNotNone(s.off)
+
+    def test_gate_budgets_every_run(self):
+        one = self.seeded(FakeExecute(), seeds="")
+        two = self.seeded(FakeExecute())
+        self.verify(one, {0, 1})
+        self.verify(two, {0, 1})
+        est = [float(line.split("cpu~")[1].split()[0]) for line in self.logs if "cpu~" in line]
+        self.assertAlmostEqual(est[-1], 2 * est[0], places=3)
+        # CPU budget enough for one run but not for two: not admitted at all.
+        ex = FakeExecute()
+        s = self.seeded(ex, cpu_budget=est[0] * 1.5)
+        self.assertEqual(self.verify(s, {0, 1}), {0, 1})
+        self.assertEqual(ex.calls, [])
+
+    def test_later_seed_reads_the_clock(self):
+        """The wall left is read again before each run; a later run that does not fit keeps."""
+        ex = FakeExecute()
+
+        def slow(spec, kwargs):
+            self.now += 18.5  # the first run used most of the wall budget
+
+        ex.during = slow
+        env = {"BR_MODE0_ELIG": self.elig, "BR_MODE0_SITE": self.site, "BR_MODE0_SEEDS": "0,1"}
+        s = mode0.Session(mode0.Config(env), self.tests, self.src, self.now - 60.0, 80.0, 140.0,
+                          self.logs.append, execute=ex, clock=lambda: self.now)
+        self.assertEqual(self.verify(s, {0, 1}), {0, 1})
+        self.assertEqual(len(ex.calls), 1)
+        self.assertTrue(any("seed 1 skipped (wall budget" in line for line in self.logs), self.logs)
+
+
+# ------------------------------------------------------------------------------- CPU estimate
+
+class EstimateTest(unittest.TestCase):
+    def test_legacy_matches_gate(self):
+        cfg = config()
+        info = [(0.1, 0.2), (0.05, 0.4), (0.02, 0.1)]
+        items = [(c, p, None, 0) for c, p in info]
+        d = mode0.gate({0, 1, 2}, [0, 1, 2], {0: 100, 1: 100, 2: 100}, info, cfg)
+        self.assertEqual(mode0.estimate(items, cfg), d.cpu)
+        self.assertEqual(mode0.estimate(items, cfg, warm=True), d.cpu)  # no bcpu: legacy
+
+    def test_warm(self):
+        cfg = config(BR_MODE0_WARM="1")
+        self.assertEqual(cfg.cpu_factor, mode0.WARM_FACTOR)
+        self.assertEqual(cfg.legacy_factor, 1.5)
+        items = [(0.10, 0.40, 0.02, 0), (0.06, 0.35, 0.03, 0), (0.05, 0.30, 0.01, 0)]
+        # startup max(0.30, 0.29, 0.25) + warm 0.06 + largest first use 0.08
+        self.assertAlmostEqual(mode0.estimate(items, cfg, warm=True), mode0.WARM_FACTOR * (0.30 + 0.06 + 0.08))
+        # One test without a warm number: the legacy model and factor.
+        items[1] = (0.06, 0.35, None, 0)
+        self.assertAlmostEqual(mode0.estimate(items, cfg, warm=True), 1.5 * (0.30 + 0.21))
+        # A warm number above the cold one counts as the cold one.
+        self.assertAlmostEqual(mode0.estimate([(0.1, 0.4, 0.5, 0)], cfg, warm=True), mode0.WARM_FACTOR * 0.4)
+        self.assertEqual(config(BR_MODE0_WARM="1", cpu_factor=2).cpu_factor, 2.0)
+        # The compile term (patched source the child compiles), warm model only.
+        one = [(0.1, 0.4, 0.05, 0)]
+        self.assertAlmostEqual(mode0.estimate(one, cfg, warm=True, compiled=2 ** 20),
+                               mode0.WARM_FACTOR * (0.3 + 0.05 + 0.05 + mode0.COMPILE_S_PER_MB))
+        self.assertAlmostEqual(mode0.estimate([(0.1, 0.4, None, 0)], cfg, warm=True, compiled=2 ** 20), 1.5 * 0.4)
+
+    def test_children(self):
+        cfg = config(cpu_factor=1)
+        # Two tests that start pool workers: their CPU beyond the startup reference is summed.
+        items = [(0.1, 2.1, None, 2), (0.2, 1.2, None, 2), (0.05, 0.35, None, 0)]
+        self.assertAlmostEqual(mode0.estimate(items, cfg, startup_ref=0.3),
+                               0.3 + 0.35 + (2.0 - 0.3) + (1.0 - 0.3))
+        # Without a reference the whole extra CPU of such tests is summed (conservative).
+        self.assertAlmostEqual(mode0.estimate(items, cfg), 0.3 + 0.35 + 2.0 + 1.0)
+
+
+# ------------------------------------------------------------------------ fs overlay (BR_MODE0_FS)
+
+def fs_header(cpu_count=2, **over):
+    with open(mode0.ovl.__file__, "rb") as fh:
+        digest = hashlib.sha256(fh.read()).hexdigest()
+    h = {"overlays": ["memory", "fs"],
+         "fs": {"cpu_count": cpu_count, "overlay_digest": digest, "mirror": list(mode0.ovl.MIRROR_DIRS),
+                "build_cpu": {"median": 0.03, "p90": 0.04, "n": 9}, "remove_cpu": {"median": 0.02, "p90": 0.03, "n": 9}},
+         "startup_cpu": {"unittest": {"median": 0.1, "p90": 0.2}, "pytest": {"median": 0.3, "p90": 0.4}}}
+    h["fs"].update(over)
+    return h
+
+
+def fs_entries(tests, spawn=(), not_fs=()):
+    """Memory and fs certification; `spawn` numbers start processes (fs only), `not_fs` fail fs."""
+    out = {}
+    for t in tests:
+        e = entry(t["number"], t["seconds"], proc=0.1)
+        fs = {"unittest": dict(engine_info(0.01, 0.11), children=0), "pytest": dict(engine_info(0.01, 0.31), children=0)}
+        if t["number"] in spawn:
+            e["unittest"] = engine_info(flags=["spawn", "rtracker"], ok=False, why="flagged spawn (iso)",
+                                        outs={"iso": "flagged"})
+            fs = {eng: dict(engine_info(0.01, 0.31, flags=["mp_spawn", "rtracker"]), children=2)
+                  for eng in ("unittest", "pytest")}
+        if t["number"] in not_fs:
+            fs["unittest"] = engine_info(ok=False, why="failed (iso)", outs={"iso": "failed"})
+        e["fs"] = fs
+        out[t["id"]] = e
+    return out
+
+
+class FsTest(SessionBase):
+    def setUp(self):
+        super().setUp()
+        self.work = os.path.join(self.tmp, "ovwork")
+        os.makedirs(self.work)
+        self.write_elig()
+
+    def write_elig(self, spawn=(1,), not_fs=(), **hdr):
+        h = fs_header(**hdr)
+        with open(self.elig, "w") as fh:
+            json.dump(elig_file(self.tests, self.src, entries=fs_entries(self.tests, spawn, not_fs), **h), fh)
+
+    def fs_session(self, ex, fs="1", **over):
+        env = {"BR_MODE0_ELIG": self.elig, "BR_MODE0_SITE": self.site, "BR_MODE0_FS": fs,
+               mode0.TUNABLES["min_gain"][0]: "-100", mode0.TUNABLES["ratio"][0]: "0"}
+        env.update({mode0.TUNABLES[k][0]: str(v) for k, v in over.items() if k in mode0.TUNABLES})
+        env.update({k: v for k, v in over.items() if k.startswith("BR_")})
+        s = mode0.Session(mode0.Config(env), self.tests, self.src, self.now, 80.0, 140.0, self.logs.append,
+                          execute=ex, clock=lambda: self.now)
+        s.fs_workdir = self.work
+        return s
+
+    def leftovers(self):
+        return os.listdir(self.work)
+
+    def test_eligibility(self):
+        e = mode0.load(self.elig, self.tests, self.src, "unittest", fs_cpus=2)
+        self.assertIsNone(e.fs_why)
+        self.assertEqual(len(e.memory), 5)
+        self.assertEqual(len(e.fs), 6)
+        self.assertEqual(e.children[self.tests[1]["id"]], 2)
+        self.assertAlmostEqual(e.fs_overhead, 0.07)
+        self.assertEqual(len(mode0.load_eligibility(self.elig, self.tests, self.src, "unittest", overlay="fs")), 6)
+        self.assertEqual(mode0.load(self.elig, self.tests, self.src, "unittest").fs, {})
+        for kw, why in (({"cpu_count": 3}, "cpu_count"), ({"overlay_digest": "0" * 64}, "digest"),
+                        ({"mirror": ["sqlglot"]}, "mirror")):
+            with self.subTest(why=why):
+                self.write_elig(**kw)
+                e = mode0.load(self.elig, self.tests, self.src, "unittest", fs_cpus=2)
+                self.assertIn(why, e.fs_why)
+                self.assertEqual(e.fs, {})
+                self.assertEqual(len(e.memory), 5)
+        self.write_elig()
+        self.assertIn("cpu_count", mode0.load(self.elig, self.tests, self.src, "unittest", fs_cpus=3).fs_why)
+
+    def test_fs_entry_rules(self):
+        base = fs_entries(self.tests[:1])[self.tests[0]["id"]]
+        tid = self.tests[0]["id"]
+
+        def fs_ok(e):
+            with open(self.elig, "w") as fh:
+                json.dump(elig_file(self.tests, self.src, entries={tid: e}, **fs_header()), fh)
+            return tid in mode0.load(self.elig, self.tests, self.src, "unittest", fs_cpus=2).fs
+
+        self.assertTrue(fs_ok(base))
+        bad = {
+            "no fs block": {k: v for k, v in base.items() if k != "fs"},
+            "spawn": dict(base, fs=dict(base["fs"], unittest=engine_info(flags=["spawn"]))),
+            "read_shadowed": dict(base, fs=dict(base["fs"], pytest=engine_info(flags=["read_shadowed"]))),
+            "pytest fails fs": dict(base, fs=dict(base["fs"], pytest=engine_info(ok=False, why="x",
+                                                                               outs={"iso": "failed"}))),
+            "fs disagree": dict(base, fs=dict(base["fs"], disagree=True)),
+            "order sensitive": dict(base, order_sensitive=True),
+            "batch failed": dict(base, batch={"unittest": "failed", "pytest": "passed"}),
+        }
+        for why, e in bad.items():
+            with self.subTest(why=why):
+                self.assertFalse(fs_ok(e))
+        self.assertTrue(fs_ok(dict(base, fs=dict(base["fs"], unittest=engine_info(flags=["mp_fork"])))))
+
+    def test_spawn_candidate_runs_whole_set_in_fs(self):
+        seen = {}
+
+        def inside(spec, kwargs):
+            root = spec["src"]
+            with open(os.path.join(root, "sqlglot", "a.py"), "rb") as fh:
+                seen["a"] = fh.read()
+            seen["link"] = os.path.islink(os.path.join(root, "sqlglot", "__init__.py"))
+            seen["listed"] = self.leftovers()
+
+        ex = FakeExecute()
+        ex.during = inside
+        got = self.verify(self.fs_session(ex), {0, 1, 2})
+        self.assertEqual(got, set())
+        self.assertEqual(len(ex.calls), 1)
+        spec, timeout = ex.calls[0]
+        self.assertEqual(ex.kwargs, [{"cpu_count": 2}])
+        self.assertEqual(spec["overlay"], "fs")
+        self.assertEqual(spec["patched"], {})
+        self.assertEqual(spec["pinned"], os.path.realpath(self.src))
+        self.assertEqual(spec["shadowed"], [os.path.join(os.path.realpath(self.src), "sqlglot", "a.py")])
+        self.assertEqual([t["id"] for t in spec["tests"]], self.ids([0, 1, 2]))
+        self.assertEqual(seen["a"], A_NEW)
+        self.assertTrue(seen["link"])
+        self.assertEqual(len(seen["listed"]), 1)
+        self.assertEqual(self.leftovers(), [])
+        # The estimate: one run (children summed) plus the overlay build/remove p90s.
+        self.assertTrue(any("mode0 fs admit" in line for line in self.logs), self.logs)
+
+    def test_cpu_count_setting(self):
+        self.write_elig(cpu_count=4)
+        ex = FakeExecute()
+        self.verify(self.fs_session(ex, BR_MODE0_FS_CPUS="4"), {0, 1})
+        self.assertEqual(ex.kwargs, [{"cpu_count": 4}])
+
+    def test_memory_only_set_stays_in_memory(self):
+        ex = FakeExecute()
+        self.assertEqual(self.verify(self.fs_session(ex), {0, 2}), set())
+        self.assertEqual(ex.kwargs, [{}])
+        self.assertNotIn("overlay", ex.calls[0][0])
+        self.assertEqual(self.leftovers(), [])
+
+    def test_flag_off_runs_memory_part(self):
+        ex = FakeExecute()
+        self.assertEqual(self.verify(self.fs_session(ex, fs=""), {0, 1, 2}), {1})
+        self.assertEqual(ex.kwargs, [{}])
+        self.assertEqual([t["id"] for t in ex.calls[0][0]["tests"]], self.ids([0, 2]))
+
+    def test_fs_not_certified_runs_memory_part(self):
+        self.write_elig(cpu_count=3)
+        ex = FakeExecute()
+        self.assertEqual(self.verify(self.fs_session(ex), {0, 1, 2}), {1})
+        self.assertEqual(ex.kwargs, [{}])
+
+    def test_fs_uncertified_test_left_out(self):
+        self.write_elig(spawn=(1,), not_fs=(2,))
+        ex = FakeExecute()
+        got = self.verify(self.fs_session(ex), {0, 1, 3})
+        self.assertEqual(ex.kwargs, [{"cpu_count": 2}])
+        self.assertEqual(got, set())
+        ex = FakeExecute()
+        got = self.verify(self.fs_session(ex), {0, 1, 2})  # memory {0, 2} or fs {0, 1}: best net
+        self.assertEqual(len(ex.calls), 1)
+        self.assertIn(got, ({1}, {2}))
+
+    def test_failure_keeps_and_cleans(self):
+        ex = FakeExecute(outcomes={self.tests[1]["id"]: "failed"})
+        self.assertEqual(self.verify(self.fs_session(ex), {0, 1, 2}), {1})
+        self.assertEqual(self.leftovers(), [])
+
+    def test_exception_in_execute_cleans(self):
+        ex = FakeExecute(raises=RuntimeError("boom"))
+        s = self.fs_session(ex)
+        self.assertEqual(self.verify(s, {0, 1, 2}), {0, 1, 2})
+        self.assertEqual(self.leftovers(), [])
+        self.assertGreater(s.spent, 0)
+        # Even an exception that escapes the run (e.g. in the result handling) cleans up.
+        ex = FakeExecute()
+        with mock.patch.object(mode0, "_passed", side_effect=KeyboardInterrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                self.verify(self.fs_session(ex), {0, 1, 2})
+        self.assertEqual(self.leftovers(), [])
+
+    def test_overlay_errors_keep(self):
+        for error in (mode0.ovl.OverlayError("no space"), OSError("ro"), ValueError("x")):
+            with self.subTest(error=error):
+                ex = FakeExecute()
+                with mock.patch.object(mode0.ovl, "build", side_effect=error):
+                    self.assertEqual(self.verify(self.fs_session(ex), {0, 1, 2}), {0, 1, 2})
+                self.assertEqual(ex.calls, [])
+        ex = FakeExecute()
+        s = self.fs_session(ex)
+        s.fs_workdir = os.path.join(self.tmp, "missing")
+        self.assertEqual(self.verify(s, {0, 1, 2}), {0, 1, 2})
+        self.assertEqual(ex.calls, [])
+
+    def test_remove_failure_turns_fs_off(self):
+        ex = FakeExecute()
+        s = self.fs_session(ex)
+        real_remove = mode0.ovl.remove
+        roots = []
+
+        def bad_remove(root):
+            roots.append(root)
+            raise mode0.ovl.OverlayError("busy")
+
+        with mock.patch.object(mode0.ovl, "remove", side_effect=bad_remove):
+            self.assertEqual(self.verify(s, {0, 1, 2}), set())  # the run itself was sound
+        self.assertTrue(s.fs_broken)
+        real_remove(roots[0])
+        ex2 = FakeExecute()
+        s.execute = ex2
+        self.assertEqual(self.verify(s, {0, 1, 2}), {1})  # memory part only from now on
+        self.assertEqual(ex2.kwargs, [{}])
+
+    def test_seeds_in_fs_share_one_overlay(self):
+        runs = [{"name": "iso"}, {"name": "seed0", "hash_seed": 0}, {"name": "seed1", "hash_seed": 1}]
+        with open(self.elig, "w") as fh:
+            json.dump(elig_file(self.tests, self.src, entries=fs_entries(self.tests, (1,)), runs=runs,
+                                **fs_header()), fh)
+        roots = []
+        ex = FakeExecute(outcomes={self.tests[0]["id"]: {1: "failed"}})
+        ex.during = lambda spec, kwargs: roots.append(spec["src"])
+        got = self.verify(self.fs_session(ex, BR_MODE0_SEEDS="0,1"), {0, 1, 2})
+        self.assertEqual(got, {0})
+        self.assertEqual(ex.kwargs, [{"hash_seed": 0, "cpu_count": 2}, {"hash_seed": 1, "cpu_count": 2}])
+        self.assertEqual(len(set(roots)), 1)
+        self.assertEqual(self.leftovers(), [])
 
 
 class SiteTest(TmpDir):
@@ -763,6 +1342,95 @@ class EndToEndTest(TmpDir):
         self.assertEqual(out2.getvalue().splitlines(), lines)
         core = [json.loads(line) for line in lines if '"core"' in line][0]
         self.assertEqual(sorted(n for w in core["workers"] for n in w), [0, 1])
+
+
+SPAWN_TEST = """
+    import multiprocessing
+    import unittest
+    from concurrent.futures import ProcessPoolExecutor
+
+
+    def child_value():
+        from sqlglot import core
+
+        return core.value()
+
+
+    class TestSpawn(unittest.TestCase):
+        def run_in_child(self):
+            with ProcessPoolExecutor(1, mp_context=multiprocessing.get_context("spawn")) as pool:
+                return pool.submit(child_value).result()
+
+        def test_child_positive(self):
+            self.assertGreater(self.run_in_child(), 0)
+
+        def test_child_exact(self):
+            self.assertEqual(self.run_in_child(), 1)
+    """
+
+
+@unittest.skipUnless(sys.version_info >= (3, 13), "-X cpu_count needs Python 3.13")
+class EndToEndFsTest(EndToEndTest):
+    """BR_MODE0_FS=1 with the real runner: tests that start multiprocessing children run in a
+    filesystem overlay, and the children import the PATCHED module (a child that saw the
+    pinned core.value() == 1 would let test_child_exact pass and be dropped: a miss)."""
+
+    def setUp(self):
+        super().setUp()
+        write_tree(self.src, {"tests/test_spawn.py": SPAWN_TEST})
+        self.tests += [
+            {"number": 3, "id": "tests/test_spawn.py::TestSpawn::test_child_positive", "file": "tests/test_spawn.py",
+             "seconds": 0.2},
+            {"number": 4, "id": "tests/test_spawn.py::TestSpawn::test_child_exact", "file": "tests/test_spawn.py",
+             "seconds": 0.2},
+        ]
+        with open(os.path.join(self.data, "tests.json"), "w") as fh:
+            json.dump({"tests": self.tests}, fh)
+        maps = {"ids": [t["id"] for t in self.tests], "files": ["sqlglot/core.py"],
+                "call": {0: {2: 0}}, "import": {0: {1: 0}}, "imported": {0: 0}, "reads": {},
+                "reads_lc": {}, "listed": {}, "sets": [0b11011], "mapped": 0b11111, "untrusted": 0}
+        with open(self.maps, "wb") as fh:
+            fh.write(zlib.compress(marshal.dumps(maps)))
+        entries = fs_entries(self.tests, spawn=(3, 4))
+        with open(self.elig, "w") as fh:
+            json.dump(elig_file(self.tests, self.src, entries=entries, **fs_header()), fh)
+        self.tmpdir = os.path.join(self.tmp, "tmpdir")
+        os.makedirs(self.tmpdir)
+
+    def test_passing_dropped_failing_kept(self):
+        out, err = self.run_selector(BR_MODE0="1", BR_MODE0_FS="1", TMPDIR=self.tmpdir,
+                                     BR_MODE0_MIN_GAIN="-100", BR_MODE0_RATIO="0")
+        self.assertEqual(out, {"core": [1, 4], "docs": []}, err)
+        self.assertIn("core: mode0 fs admit", err)
+        self.assertEqual(os.listdir(self.tmpdir), [])
+
+    def test_flag_off_is_static_selection(self):
+        out, err = self.run_selector()
+        self.assertEqual(out, {"core": [0, 1, 3, 4], "docs": []})
+        self.assertNotIn("mode0", err)
+
+    def test_refused_file_is_static_selection(self):
+        with open(self.elig, "w") as fh:
+            fh.write("{}")
+        out, err = self.run_selector(BR_MODE0="1", BR_MODE0_FS="1")
+        self.assertEqual(out, {"core": [0, 1, 3, 4], "docs": []})
+
+    def test_memory_only_without_fs(self):
+        out, err = self.run_selector(BR_MODE0="1", BR_MODE0_MIN_GAIN="-100", BR_MODE0_RATIO="0")
+        self.assertEqual(out, {"core": [1, 3, 4], "docs": []}, err)
+
+    def test_passing_dropped_failing_kept_seeds(self):
+        runs = [{"name": "iso"}, {"name": "seed0", "hash_seed": 0}, {"name": "seed1", "hash_seed": 1}]
+        with open(self.elig, "w") as fh:
+            json.dump(elig_file(self.tests, self.src, entries=fs_entries(self.tests, spawn=(3, 4)), runs=runs,
+                                **fs_header()), fh)
+        out, err = self.run_selector(BR_MODE0="1", BR_MODE0_FS="1", TMPDIR=self.tmpdir, BR_MODE0_SEEDS="0,1",
+                                     BR_MODE0_MIN_GAIN="-100", BR_MODE0_RATIO="0", BR_MODE0_CPU_FACTOR="0.1")
+        self.assertEqual(out, {"core": [1, 4], "docs": []}, err)
+        self.assertEqual(err.count("core: mode0 fs admit"), 2, err)
+        self.assertEqual(os.listdir(self.tmpdir), [])
+
+    test_flag_off_never_executes = None
 
 
 if __name__ == "__main__":
