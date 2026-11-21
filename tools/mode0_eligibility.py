@@ -4,7 +4,7 @@
     python3 tools/mode0_eligibility.py --repo SRC --tests tests.json --out mode0.json \
         [--python PY] [-j N] [--engines unittest,pytest] [--seeds 0,1] [--budget SECONDS] \
         [--site DIR ...] [--also-batch] [--max-seconds S] [--sets sets.json] \
-        [--overlay memory,fs] [--cpu-count N] [--overlay-dir DIR]
+        [--overlay memory,fs] [--cpu-count N] [--overlay-dir DIR] [--trust-unittest-without-pytest]
 
 Every test runs alone in a fresh Mode 0 runner process on the UNPATCHED source (patched = {}),
 launched exactly as the selector launches it (selector.mode0_runner.execute):
@@ -22,16 +22,26 @@ Overlay modes (--overlay, default "memory"):
             children started in the overlay are allowed there (flag mp_spawn / mp_fork).
 
 A test is eligible for an engine in a mode when every run of that engine in that mode reached
-it and reported "passed" with no unsafe flag (m0.UNSAFE_FLAGS: spawn, meta_path, cwd,
-read_patched, read_shadowed, sys_path, write_pinned, audit_error); for unittest, also when
-pytest was run in that mode and agrees; in memory mode with --also-batch, also when running all
-catalog tests of its file in one process (per engine, catalog order) gives the same outcome as
-running it alone (otherwise it is order_sensitive and ineligible for every engine and mode).
+it and reported "passed" with no unsafe flag (m0.UNSAFE_FLAGS); for unittest, ONLY when the
+pytest engine ran in the same mode in this certification and passed it too (unless
+--trust-unittest-without-pytest, a debugging switch recorded in the header); with
+--also-batch, also when running all catalog tests of its file in one process (per engine and
+mode, catalog order) gives the same outcome as running it alone (otherwise it is
+order_sensitive and ineligible for every engine and mode).
 
 Output (schema br-mode0-eligibility/1; fields only ever added):
     header      ... as before, plus "overlays": [modes run], "fs": {"cpu_count", "overlay_digest"
                 (sha256 of selector/overlay.py), "build_cpu"/"remove_cpu" {median, p90, n} (tool
-                CPU per overlay), "runs"} when fs ran; "counts"."eligible_fs" {engine: n}.
+                CPU per overlay), "runs"} when fs ran; "counts"."eligible_fs" {engine: n};
+                "complete" (false when the budget cut the run short, a job was skipped or an
+                overlay could not be built: tests not reached are then simply not eligible);
+                "engines_compared" (both engines ran in every certified mode);
+                "trust_unittest_without_pytest"; "source_digest" = m0.source_digest(repo), the
+                CONTENT of the whole pinned tree ("source_digest_scope": "tree"); "env_digest" =
+                m0.env_digest(site dirs) of the certified interpreter (version, implementation,
+                machine and every *.dist-info/*.egg-info name in the site dirs; "site" lists
+                them in order); "pad" [frame depth, C levels] and "assert_watch" as reported by
+                the runner; "batch_modes".
     summary     "eligible" {engine: [numbers]} = MEMORY mode, unchanged in meaning (empty when
                 memory was not run); "eligible_fs" {engine: [numbers]}; "ineligible_reasons_fs";
                 "mode_differences" [{id, engine, memory, fs}] where the iso outcomes differ.
@@ -39,6 +49,9 @@ Output (schema br-mode0-eligibility/1; fields only ever added):
                 "cpu" test CPU of the runner process, "proc" whole runner CPU INCLUDING reaped
                 children, "flags", "detail"?}); "fs": {"<engine>": the same verdict for fs mode,
                 plus "children" = max mp_children reported}.
+                With --also-batch: "batch" {engine: outcome in the per-file batch run (memory)}
+                and "bcpu" {engine: the test's own WARM CPU seconds in that batch run}; for fs
+                mode the same two under "fs".
 
 --sets FILE ({name: [test ids]}) additionally measures the CPU of running each set in ONE
 runner process per engine (and per mode). Diagnostic only: written to <out>.sets.json, never
@@ -115,6 +128,13 @@ def pct(values, q):
     return round(values[k], 4)
 
 
+def _one(values):
+    """The single value every run reported (JSON-encoded set), else None."""
+    if values and len(values) == 1:
+        return json.loads(next(iter(values)))
+    return None
+
+
 def file_digest(path):
     with open(path, "rb") as fh:
         return hashlib.sha256(fh.read()).hexdigest()
@@ -131,6 +151,7 @@ class Runner:
         self.jobs_skipped = 0
         self.pytest_version = None
         self.build_cpu, self.remove_cpu, self.overlay_errors = [], [], []
+        self.runner_info = {}
         os.makedirs(args.workdir, exist_ok=True)
         os.makedirs(args.overlay_dir, exist_ok=True)
 
@@ -173,6 +194,9 @@ class Runner:
             self.jobs_run += 1
             if res["done"] and res["done"].get("pytest"):
                 self.pytest_version = res["done"]["pytest"]
+            for key in ("pad", "assert_watch"):
+                if res["done"] and res["done"].get(key) is not None:
+                    self.runner_info.setdefault(key, set()).add(json.dumps(res["done"][key]))
         return res
 
 
@@ -251,6 +275,8 @@ def main():
     ap.add_argument("--cpu-count", type=int, default=2,
                     help="fs mode: launch with -X cpu_count=N (0 = no cap)")
     ap.add_argument("--overlay-dir", default=None, help="fs mode: where overlays are built (default workdir)")
+    ap.add_argument("--trust-unittest-without-pytest", action="store_true",
+                    help="debugging only: certify unittest even when the pytest engine did not run")
     args = ap.parse_args()
 
     started_wall, started_cpu = time.monotonic(), time.process_time()
@@ -294,7 +320,7 @@ def main():
     # chain; an unsafe "spawn" flag also skips the other engine (never eligible in that mode).
     jobs = [("iso", t["id"], mode) for mode in modes for t in attempt]
     results = {}  # (id, engine, run, mode) -> line dict
-    batch = {}    # (id, engine) -> line dict (memory mode)
+    batch = {}    # (id, engine, mode) -> line dict
 
     def do(job):
         kind = job[0]
@@ -320,20 +346,20 @@ def main():
                         runner.run(engine, item, hash_seed=seed, mode=mode), tid)
                     alive[engine] = ln["o"] == "passed"
         else:
-            _, file, engine = job
+            _, file, engine, mode = job
             items = [(t["id"], t["seconds"]) for t in attempt_by_file[file]]
-            res = runner.run(engine, items)
+            res = runner.run(engine, items, mode=mode)
             for tid, _ in items:
-                batch[(tid, engine)] = one_line(res, tid)
+                batch[(tid, engine, mode)] = one_line(res, tid)
 
     attempt_by_file = {}
     for t in tests:
         if t["id"] in attempt_ids:
             attempt_by_file.setdefault(t["file"], []).append(t)
     also_batch = args.also_batch and "memory" in modes
-    if also_batch:
-        jobs += [("batch", f, e) for f in sorted(attempt_by_file, key=lambda f: -sum(
-            t["seconds"] for t in attempt_by_file[f])) for e in engines]
+    batch_modes = modes if args.also_batch else []
+    by_cost = sorted(attempt_by_file, key=lambda f: -sum(t["seconds"] for t in attempt_by_file[f]))
+    jobs += [("batch", f, e, m) for m in batch_modes for f in by_cost for e in engines]
 
     with ThreadPoolExecutor(args.j) as pool:
         list(pool.map(do, jobs))
@@ -400,9 +426,14 @@ def main():
                     entry["disagree"] = True
                 else:
                     target["disagree"] = True
-            if "pytest" in target and "unittest" in target and target["unittest"]["ok"] and not target["pytest"]["ok"]:
-                target["unittest"]["ok"] = False
-                target["unittest"]["why"] = "pytest engine does not pass it"
+            if "unittest" in target and target["unittest"]["ok"]:
+                if "pytest" not in target:
+                    if not args.trust_unittest_without_pytest:
+                        target["unittest"]["ok"] = False
+                        target["unittest"]["why"] = "pytest engine not run (no agreement)"
+                elif not target["pytest"]["ok"]:
+                    target["unittest"]["ok"] = False
+                    target["unittest"]["why"] = "pytest engine does not pass it"
         if len(modes) == 2:
             for engine in engines:
                 a, b = iso.get(("memory", engine)), iso.get(("fs", engine))
@@ -412,23 +443,28 @@ def main():
                 if ok_m != ok_f:
                     mode_differences.append({"id": tid, "engine": engine, "memory_ok": ok_m, "fs_ok": ok_f,
                                              "memory_why": entry[engine]["why"], "fs_why": entry["fs"][engine]["why"]})
-        if also_batch:
-            b = {}
+        for mode in batch_modes:
+            target = entry if mode == "memory" else entry["fs"]
+            b, bcpu = {}, {}
             for engine in engines:
-                ln = batch.get((tid, engine), {"o": "not_reached"})
+                ln = batch.get((tid, engine, mode), {"o": "not_reached"})
                 b[engine] = ln.get("line") or ln["o"]
-                alone = entry[engine]["o"]["iso"]
+                if ln.get("cpu") is not None:
+                    bcpu[engine] = ln["cpu"]
+                alone = target[engine]["o"]["iso"]
                 if alone in SYNTHETIC:
                     continue
                 if b[engine] in ("notrun", "timeout", "missing", "not_reached", "unproven"):
-                    if entry[engine]["ok"]:
-                        entry[engine]["ok"] = False
-                        entry[engine]["why"] = f"batch inconclusive ({b[engine]})"
-                elif b[engine] != (results.get((tid, engine, "iso", "memory"), {}).get("line") or alone):
+                    if target[engine]["ok"]:
+                        target[engine]["ok"] = False
+                        target[engine]["why"] = f"batch inconclusive ({b[engine]})"
+                elif b[engine] != (results.get((tid, engine, "iso", mode), {}).get("line") or alone):
                     if tid not in [x["id"] for x in order_sensitive]:
-                        order_sensitive.append({"id": tid, "engine": engine, "alone": alone, "batch": b[engine]})
+                        order_sensitive.append({"id": tid, "engine": engine, "mode": mode,
+                                                "alone": alone, "batch": b[engine]})
                     entry["order_sensitive"] = True
-            entry["batch"] = b
+            target["batch"] = b
+            target["bcpu"] = bcpu
             if entry.get("order_sensitive"):
                 for target in [entry] + ([entry["fs"]] if "fs" in entry else []):
                     for engine in engines:
@@ -457,6 +493,7 @@ def main():
     ineligible_fs = reasons(lambda e: e.get("fs"))
 
     info = interpreter_info(args.python)
+    not_reached = sum(1 for ln in list(results.values()) + list(batch.values()) if ln.get("o") == "not_reached")
     header = {
         "python": info.get("python"), "implementation": info.get("implementation"),
         "platform": info.get("platform"), "machine": info.get("machine"),
@@ -480,6 +517,16 @@ def main():
         "startup_cpu": {e: {"median": pct(v, 0.5), "p90": pct(v, 0.9), "n": len(v)} for e, v in startup.items()},
         "src_writes": src_writes[:200], "src_removed": src_removed[:200],
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "complete": runner.jobs_skipped == 0 and not_reached == 0 and not runner.overlay_errors,
+        "engines_compared": set(engines) == {"unittest", "pytest"},
+        "trust_unittest_without_pytest": bool(args.trust_unittest_without_pytest),
+        "source_digest_scope": "tree",
+        "env_digest": m0.env_digest(args.site, version=info.get("python"),
+                                    implementation=info.get("implementation"),
+                                    machine=info.get("machine")),
+        "pad": _one(runner.runner_info.get("pad")),
+        "assert_watch": _one(runner.runner_info.get("assert_watch")),
+        "batch_modes": batch_modes,
     }
     if "fs" in modes:
         header["counts"]["eligible_fs"] = {e: len(v) for e, v in eligible["fs"].items()}
@@ -520,7 +567,8 @@ def main():
             os.rmdir(d)
         except OSError:
             pass
-    print(f"eligible: memory {header['counts']['eligible'] if 'memory' in modes else '-'}, "
+    print(f"complete {header['complete']}, engines compared {header['engines_compared']}; "
+          f"eligible: memory {header['counts']['eligible'] if 'memory' in modes else '-'}, "
           f"fs {header['counts'].get('eligible_fs', '-')} of {len(tests)}; disagreements {len(disagreements)}; "
           f"mode differences {len(mode_differences)}; order-sensitive {len(order_sensitive)}; "
           f"wall {header['wall']}s; child cpu {header['cpu']['children']}s; src writes {len(src_writes)}",
