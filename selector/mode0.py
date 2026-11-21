@@ -77,14 +77,17 @@ exception, leaves S exactly as it was. The child CPU of every attempt counts tow
 CPU_BUDGET. stdout is never written to.
 """
 
+import hashlib
 import importlib.machinery
 import json
 import math
 import os
 import sys
+import tempfile
 import time
 
 from . import mode0_runner as m0
+from . import overlay as ovl
 from . import schedule
 from .replica import overlay_spec
 
@@ -93,6 +96,11 @@ ENGINES = ("unittest", "pytest")
 OVERLAYS = ("memory",)
 # Flags a certification pass may carry and still count (the resource tracker runs only stdlib).
 BENIGN_FLAGS = frozenset({"rtracker"})
+# In fs mode, also the audited multiprocessing children (mode0_runner: verified at creation).
+FS_BENIGN_FLAGS = BENIGN_FLAGS | {"mp_spawn", "mp_fork"}
+# BR_MODE0_WARM=1: default CPU_FACTOR of the warm-batch estimate (see `estimate`).
+WARM_FACTOR = 1.3
+MAX_SEED = 2 ** 32 - 1  # PYTHONHASHSEED range
 
 # name -> (env var, default, lower bound, upper bound)
 TUNABLES = {
@@ -109,11 +117,34 @@ TUNABLES = {
     "startup_cap": ("BR_MODE0_STARTUP_CAP", 10.0, 0.1, 600),
     "margin": ("BR_MODE0_MARGIN", 2.0, 0, 600),
     "reserve": ("BR_MODE0_RESERVE", 10.0, 0, 600),
+    "fs_cpus": ("BR_MODE0_FS_CPUS", 2, 1, 1024),
+}
+# Switches, each "1" = on. Defaults off except EXACT (a contract fix; "0" turns it off for A/B).
+SWITCHES = {
+    "fs": ("BR_MODE0_FS", False),          # filesystem overlay for spawn-certified candidates
+    "warm": ("BR_MODE0_WARM", False),      # warm-batch CPU estimate (eligibility "bcpu")
+    "nosite": ("BR_MODE0_NOSITE", False),  # admit patches whose only sites were proven no-ops
+    "exact": ("BR_MODE0_EXACT", True),     # every hunk at its stated position, exact bytes
 }
 
 
 class Refused(Exception):
     """The eligibility file cannot be used for this run."""
+
+
+def parse_seeds(raw):
+    """BR_MODE0_SEEDS: "" -> [] (one production run, random hash seed), "0,1" -> [0, 1]."""
+    if raw is None or not raw.strip():
+        return []
+    seeds = []
+    for part in raw.split(","):
+        part = part.strip()
+        if not part.isdigit() or int(part) > MAX_SEED:
+            raise ValueError(f"BR_MODE0_SEEDS={raw!r}")
+        if int(part) in seeds:
+            raise ValueError(f"BR_MODE0_SEEDS={raw!r}: repeated seed")
+        seeds.append(int(part))
+    return seeds
 
 
 class Config:
@@ -126,12 +157,35 @@ class Config:
                 raise ValueError(f"{var}={raw!r} out of range")
             setattr(self, name, value)
         self.max_tests = int(self.max_tests)
+        if self.fs_cpus != int(self.fs_cpus):
+            raise ValueError(f"BR_MODE0_FS_CPUS={env.get('BR_MODE0_FS_CPUS')!r}")
+        self.fs_cpus = int(self.fs_cpus)
+        for name, (var, default) in SWITCHES.items():
+            raw = env.get(var)
+            if raw in (None, ""):
+                value = default
+            elif raw in ("0", "1"):
+                value = raw == "1"
+            else:
+                raise ValueError(f"{var}={raw!r}")
+            setattr(self, name, value)
+        # The legacy estimate keeps its factor; the warm one (used only when every test of the
+        # set has a warm number) gets WARM_FACTOR unless BR_MODE0_CPU_FACTOR is set.
+        self.legacy_factor = self.cpu_factor
+        if self.warm and env.get("BR_MODE0_CPU_FACTOR") in (None, ""):
+            self.cpu_factor = WARM_FACTOR
+        self.seeds = parse_seeds(env.get("BR_MODE0_SEEDS"))
         self.engine = env.get("BR_MODE0_ENGINE") or "unittest"
         if self.engine not in ENGINES:
             raise ValueError(f"BR_MODE0_ENGINE={self.engine!r}")
         app = app or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.elig_path = env.get("BR_MODE0_ELIG") or os.path.join(app, "maps", "mode0.json")
         self.site_env = env.get("BR_MODE0_SITE")
+
+    @property
+    def runs(self):
+        """Hash seeds of the runs per attempt; [None] = one production (random seed) run."""
+        return list(self.seeds) or [None]
 
     def cap(self, seconds):
         return max(self.cap_min, self.cap_mult * seconds + self.cap_add)
@@ -164,13 +218,19 @@ def _module_problem(path, src_root):
     return None
 
 
-def contract(fps, res, src_root):
-    """None when the in-memory overlay represents the patch faithfully, else the reason."""
+def contract(fps, res, src_root, allow_no_site=False):
+    """None when the in-memory overlay represents the patch faithfully, else the reason.
+
+    allow_no_site (BR_MODE0_NOSITE=1): also admit a patch with no call-time site and no
+    import-time file, i.e. whose every site was an is/== swap proven a no-op by the type
+    profile (the selection is then the importers whose profile is incomplete, plus untrusted
+    and unmapped tests). Everything else below still holds, in particular res.patched has the
+    complete new source of every changed file."""
     if not res.replica_ok:
         return "not an overlay-able patch"
     if not res.patched:
         return "nothing patched"
-    if not (res.call_sites or res.import_files):
+    if not (res.call_sites or res.import_files) and not allow_no_site:
         return "no call/import site"
     paths = []
     for fp in fps:
@@ -192,6 +252,73 @@ def contract(fps, res, src_root):
     return None
 
 
+def _lines(data):
+    """Split on b"\\n" only (as git does), keeping the line ends."""
+    parts = data.split(b"\n")
+    out = [p + b"\n" for p in parts[:-1]]
+    if parts[-1]:
+        out.append(parts[-1])
+    return out
+
+
+def exact_apply(fp, old):
+    """The new bytes when every hunk of `fp` applies to `old` exactly where it says, else None.
+
+    Stricter than patch.apply (which searches +-200 lines and, last, ignores line endings) and
+    than `git apply` (which also accepts offsets): each hunk's preimage must equal the pinned
+    lines at old_start byte for byte, hunks must be in order and not overlap, line counts must
+    match the @@ header, a hunk without trailing context must end at end of file (git's
+    match_end), and only the last line of the result may lack a newline. Pure insertions
+    (old_len 0, no context: git positions them differently from patch.apply) and any CR byte
+    in a hunk are refused."""
+    src = _lines(old)
+    out, pos = [], 0
+    for h in fp.hunks:
+        if any(b"\r" in c for _, c in h.lines):
+            return None
+        pre = [c for t, c in h.lines if t != b"+"]
+        post = [c for t, c in h.lines if t != b"-"]
+        if h.old_len == 0 or len(pre) != h.old_len or len(post) != h.new_len:
+            return None
+        start = h.old_start - 1
+        if start < pos or start + len(pre) > len(src) or src[start:start + len(pre)] != pre:
+            return None
+        if h.lines[-1][0] != b" " and start + len(pre) != len(src):
+            return None
+        out.extend(src[pos:start])
+        out.extend(post)
+        pos = start + len(pre)
+    out.extend(src[pos:])
+    if any(not line.endswith(b"\n") for line in out[:-1]):
+        return None
+    return b"".join(out)
+
+
+def exact_problem(fps, res, src_root):
+    """None when every file entry of the patch applies exactly (exact_apply) to the pinned
+    bytes and gives exactly the bytes Mode 0 overlays (res.patched), else the reason.
+    Assumes contract() passed (one plain modification per path, all in res.patched)."""
+    for fp in fps:
+        path = fp.old_path
+        if fp.mode_only or fp.binary or not fp.hunks:
+            return f"{path}: not a text edit"
+        try:
+            with open(os.path.join(src_root, path), "rb") as fh:
+                old = fh.read()
+        except OSError:
+            return f"{path}: cannot read the pinned file"
+        if b"\r" in old:
+            return f"{path}: pinned file has CR bytes"
+        new = exact_apply(fp, old)
+        if new is None:
+            return f"{path}: a hunk does not apply exactly at its stated position"
+        if new == old:
+            return f"{path}: file unchanged"
+        if res.patched.get(path) != new:
+            return f"{path}: overlaid bytes differ from the exact application"
+    return None
+
+
 # --------------------------------------------------------------------------- eligibility
 
 def _number(x):
@@ -202,7 +329,8 @@ def _engine_ok(info, run_names, overlay):
     if not isinstance(info, dict) or info.get("ok") is not True or info.get("why") is not None:
         return False
     flags = info.get("flags")
-    if not isinstance(flags, list) or not set(flags) <= BENIGN_FLAGS:
+    benign = FS_BENIGN_FLAGS if overlay == "fs" else BENIGN_FLAGS
+    if not isinstance(flags, list) or not set(flags) <= benign:
         return False
     if overlay == "memory" and "spawn" in flags:
         return False
@@ -213,32 +341,90 @@ def _engine_ok(info, run_names, overlay):
 
 
 def eligible_entry(entry, engine, certified, run_names, overlay="memory"):
-    """(cpu, proc) of a test eligible for `engine`, or None."""
+    """(cpu, proc) of a test eligible for `engine` in `overlay` mode, or None.
+
+    fs mode: the verdicts are the entry's "fs" block (per engine, same runs), which may carry
+    the audited multiprocessing flags; order (batch) and engine agreement are certified in
+    memory mode and must hold too."""
     if not isinstance(entry, dict) or entry.get("order_sensitive") or entry.get("disagree"):
         return None
     batch = entry.get("batch")
     if not isinstance(batch, dict):
         return None
-    for e in certified:
-        if not _engine_ok(entry.get(e), run_names, overlay) or batch.get(e) != "passed":
+    block = entry
+    if overlay == "fs":
+        block = entry.get("fs")
+        if not isinstance(block, dict) or block.get("order_sensitive") or block.get("disagree"):
             return None
-    info = entry[engine]
+    for e in certified:
+        if not _engine_ok(block.get(e), run_names, overlay) or batch.get(e) != "passed":
+            return None
+    info = block[engine]
     cpu, proc = info.get("cpu"), info.get("proc")
     if not (_number(cpu) and _number(proc)):
         return None
     return float(cpu), float(proc)
 
 
-def load_eligibility(path, tests, src_root, engine, overlay="memory", python=None):
-    """{test id: (cpu, proc)} of the tests eligible for `engine`; raises Refused."""
-    python = tuple(python or sys.version_info[:2])
+class Eligibility:
+    """What Session needs from an eligibility file, for one engine.
+
+    memory / fs  {id: (cpu, proc)} of the tests eligible in that overlay mode (fs is {} when
+                 the file did not certify fs mode for this overlay.py and cpu_count; fs_why)
+    children     {id: n} multiprocessing children reported in fs mode (0 if none)
+    warm         {id: s} warm CPU of the test inside its file batch ("bcpu", optional)
+    seeds        hash seeds the file certified (runs "seed<N>" with hash_seed N)
+    startup      the engine's median startup CPU (header startup_cpu), or None
+    fs_overhead  p90 CPU of building + removing one overlay (header fs build/remove_cpu)"""
+
+    def __init__(self):
+        self.memory, self.fs, self.children, self.warm = {}, {}, {}, {}
+        self.fs_why = None
+        self.seeds = set()
+        self.startup = None
+        self.fs_overhead = 0.0
+
+
+def _read(path):
     try:
         with open(path, "rb") as fh:
-            data = json.loads(fh.read().decode("utf-8"), parse_constant=m0._strict_constant)
+            return json.loads(fh.read().decode("utf-8"), parse_constant=m0._strict_constant)
     except FileNotFoundError:
         raise Refused(f"no eligibility file {path}") from None
     except Exception as error:
         raise Refused(f"eligibility file does not parse ({type(error).__name__})") from None
+
+
+def _overlay_digest():
+    with open(ovl.__file__, "rb") as fh:
+        return hashlib.sha256(fh.read()).hexdigest()
+
+
+def _fs_problem(header, fs_cpus):
+    """None when the header certifies fs mode for this overlay.py and cpu_count."""
+    fs = header.get("fs")
+    overlays = header.get("overlays")
+    if not isinstance(overlays, list) or "fs" not in overlays or not isinstance(fs, dict):
+        return "fs mode not certified"
+    if fs.get("overlay_digest") != _overlay_digest():
+        return "overlay digest differs"
+    if fs.get("cpu_count") != fs_cpus:
+        return f"fs certified with cpu_count {fs.get('cpu_count')}, not {fs_cpus}"
+    if fs.get("mirror") is not None and list(fs.get("mirror")) != list(ovl.MIRROR_DIRS):
+        return "overlay mirror differs"
+    return None
+
+
+def _p90(block):
+    value = block.get("p90") if isinstance(block, dict) else None
+    return float(value) if _number(value) else None
+
+
+def load(path, tests, src_root, engine, python=None, seeds=(), fs_cpus=None):
+    """Eligibility for `engine`; raises Refused (also for a hash seed the file did not
+    certify). fs_cpus None: fs mode is not wanted (Eligibility.fs stays empty)."""
+    python = tuple(python or sys.version_info[:2])
+    data = _read(path)
     if not isinstance(data, dict) or data.get("schema") != SCHEMA:
         raise Refused("unknown eligibility schema")
     header, entries = data.get("header"), data.get("tests")
@@ -273,12 +459,84 @@ def load_eligibility(path, tests, src_root, engine, overlay="memory", python=Non
         raise Refused("no seed certification")
     if header.get("also_batch") is not True:
         raise Refused("no order (batch) certification")
-    out = {}
+    out = Eligibility()
+    for r in runs:
+        s = r.get("hash_seed")
+        if isinstance(s, int) and not isinstance(s, bool) and r.get("name") == f"seed{s}":
+            out.seeds.add(s)
+    for s in seeds:
+        if s not in out.seeds:
+            raise Refused(f"hash seed {s} not certified (certified: {sorted(out.seeds)})")
+    startup = header.get("startup_cpu")
+    startup = startup.get(engine) if isinstance(startup, dict) else None
+    if isinstance(startup, dict) and _number(startup.get("median")):
+        out.startup = float(startup["median"])
+    if fs_cpus is not None:
+        out.fs_why = _fs_problem(header, fs_cpus)
+        if out.fs_why is None:
+            fs = header["fs"]
+            out.fs_overhead = sum(_p90(fs.get(k)) or 0.0 for k in ("build_cpu", "remove_cpu"))
     for t in tests:
-        got = eligible_entry(entries.get(t["id"]), engine, certified, run_names, overlay)
+        tid = t["id"]
+        e = entries.get(tid)
+        got = eligible_entry(e, engine, certified, run_names, "memory")
         if got is not None:
-            out[t["id"]] = got
+            out.memory[tid] = got
+        if fs_cpus is not None and out.fs_why is None:
+            got = eligible_entry(e, engine, certified, run_names, "fs")
+            if got is not None:
+                out.fs[tid] = got
+                kids = e["fs"][engine].get("children", 0)
+                out.children[tid] = int(kids) if _number(kids) else 1
+        warm = e.get("bcpu") if isinstance(e, dict) else None
+        warm = warm.get(engine) if isinstance(warm, dict) else None
+        if _number(warm):
+            out.warm[tid] = float(warm)
     return out
+
+
+def load_eligibility(path, tests, src_root, engine, overlay="memory", python=None):
+    """{test id: (cpu, proc)} of the tests eligible for `engine` in `overlay` mode (fs: with
+    the default BR_MODE0_FS_CPUS); raises Refused."""
+    if overlay == "fs":
+        return load(path, tests, src_root, engine, python=python, fs_cpus=TUNABLES["fs_cpus"][1]).fs
+    return load(path, tests, src_root, engine, python=python).memory
+
+
+# ------------------------------------------------------------------------- CPU estimate
+
+def estimate(items, cfg, warm=False, startup_ref=None):
+    """Estimated child CPU of ONE run of a set: the model below times
+    cfg.cpu_factor. items: [(cpu, proc, warm_cpu or None, children)] per test, from the
+    single-test certification runs of the overlay mode used (proc includes reaped children).
+
+    Legacy (warm False, no children): max_i(proc_i - cpu_i) + sum_i cpu_i: one process
+    startup plus every test's cold CPU.
+    warm True: max_i(proc_i - cpu_i) + sum_i w_i + max_i(cpu_i - w_i), w_i = the test's CPU
+    inside its file batch ("bcpu"): one startup, every test warm, and the largest first-use
+    cost (cold minus warm) once; with the warm factor (cfg.cpu_factor). If a test of the set
+    has no warm number, the legacy model and factor (cfg.legacy_factor) are used. A set mixes files, so first-use costs of
+    several files are paid; the factor covers that (validated, see the module docstring).
+    Children (fs mode, tests that start multiprocessing workers): their CPU is in proc_i, not
+    in the startup; it is taken as proc_i - cpu_i - startup_ref and summed over such tests."""
+    warm = warm and all(w is not None for _, _, w, _ in items)  # else today's estimate
+    factor = cfg.cpu_factor if warm else getattr(cfg, "legacy_factor", cfg.cpu_factor)
+    startup, own, first_use, kids = 0.0, 0.0, 0.0, 0.0
+    for cpu, proc, w, children in items:
+        extra = max(proc - cpu, 0.0)
+        if children and startup_ref is not None:
+            kids += max(extra - startup_ref, 0.0)
+            extra = min(extra, startup_ref)
+        elif children:
+            kids, extra = kids + extra, 0.0
+        startup = max(startup, extra)
+        if warm:
+            w = min(w, cpu)
+            own += w
+            first_use = max(first_use, cpu - w)
+        else:
+            own += cpu
+    return factor * (startup + own + first_use + kids)
 
 
 # ----------------------------------------------------------------------------- the gate
@@ -296,9 +554,10 @@ class Decision:
 EPS = 1e-9
 
 
-def gate(selected, R, ms, info, cfg):
+def gate(selected, R, ms, info, cfg, cpu=None):
     """Expected-value admission for running R (eligible part of `selected`); info: id-free
-    list of (cpu, proc) for R."""
+    list of (cpu, proc) for R. cpu: the CPU of the whole attempt when the caller estimated
+    it (every hash-seed run, overlay build/remove); None = the legacy one-run estimate."""
     n, n_s = len(R), len(selected)
     total_ms = sum(ms[t] for t in R)
     secs = total_ms / 1000
@@ -310,8 +569,9 @@ def gate(selected, R, ms, info, cfg):
         return Decision(False, "too many recorded seconds", n, n_s, secs)
     rest = set(selected) - set(R)
     delta = schedule.cost(schedule.split(selected, ms), ms) - schedule.cost(schedule.split(rest, ms), ms)
-    startup = max(max(proc - cpu, 0.0) for cpu, proc in info)
-    cpu = cfg.cpu_factor * (startup + sum(c for c, _ in info))
+    if cpu is None:
+        startup = max(max(proc - c, 0.0) for c, proc in info)
+        cpu = cfg.cpu_factor * (startup + sum(c for c, _ in info))
     benefit = cfg.p * delta / 1000
     d = Decision(False, "", n, n_s, secs, delta, cpu, benefit)
     if benefit - cpu < cfg.min_gain - EPS:
@@ -388,6 +648,8 @@ class Session:
         self.spent = 0.0
         self.off = None  # reason once Mode 0 is off for the rest of the run
         self._elig = None
+        self.fs_workdir = None  # None: tempfile.gettempdir() (the image's writable /tmp)
+        self.fs_broken = False  # an overlay could not be removed: no more fs runs
         self.site = site_dirs(cfg.site_env)
         if not self.site:
             self._disable("no site-packages directory")
@@ -399,10 +661,15 @@ class Session:
 
     def eligibility(self):
         if self._elig is None and self.off is None:
+            cfg = self.cfg
             try:
-                self._elig = load_eligibility(self.cfg.elig_path, self.tests, self.src_root,
-                                              self.cfg.engine, python=self.python)
-                self.log(f"mode0: {len(self._elig)} {self.cfg.engine}-eligible tests")
+                self._elig = load(cfg.elig_path, self.tests, self.src_root, cfg.engine,
+                                  python=self.python, seeds=cfg.seeds,
+                                  fs_cpus=cfg.fs_cpus if cfg.fs else None)
+                self.log(f"mode0: {len(self._elig.memory)} {cfg.engine}-eligible tests")
+                if cfg.fs:
+                    self.log(f"mode0 fs: {len(self._elig.fs)} eligible tests"
+                             + (f" (fs off: {self._elig.fs_why})" if self._elig.fs_why else ""))
             except Refused as why:
                 self._disable(str(why))
         return self._elig
@@ -416,13 +683,39 @@ class Session:
             self.log(f"{cid}: mode0 error {error!r}; kept")
             return selected
 
+    def _avail(self):
+        """Wall seconds Mode 0 may still use, read from the clock now."""
+        cfg = self.cfg
+        return min(self.started + self.wall_budget, self.started + self.hard_budget - cfg.reserve) - self.clock()
+
+    def _plan(self, mode, R, selected, ms, elig):
+        """(per-run estimate function, Decision) for running R in `mode`."""
+        cfg = self.cfg
+        table = elig.fs if mode == "fs" else elig.memory
+        custom = cfg.warm or mode == "fs" or len(cfg.runs) > 1
+
+        def per_run(nums):
+            items = [(*table[self.ids[n]], elig.warm.get(self.ids[n]),
+                      elig.children.get(self.ids[n], 0) if mode == "fs" else 0) for n in nums]
+            return estimate(items, cfg, warm=cfg.warm, startup_ref=elig.startup)
+
+        total = None
+        if custom and R:
+            total = per_run(R) * len(cfg.runs) + (elig.fs_overhead if mode == "fs" else 0.0)
+        d = gate(selected, R, ms, [table[self.ids[n]] for n in R], cfg, cpu=total)
+        d.mode = mode
+        return per_run, d
+
     def _verify(self, cid, selected, res, fps, ms, overlay):
         if self.off is not None or not selected:
             return selected
         if overlay not in OVERLAYS:
             self.log(f"{cid}: mode0 skip (overlay {overlay!r} not supported)")
             return selected
-        why = contract(fps, res, self.src_root)
+        cfg = self.cfg
+        why = contract(fps, res, self.src_root, allow_no_site=cfg.nosite)
+        if why is None and cfg.exact:
+            why = exact_problem(fps, res, self.src_root)
         if why:
             self.log(f"{cid}: mode0 skip ({why})")
             return selected
@@ -430,53 +723,120 @@ class Session:
         if elig is None:
             return selected
         selected = set(selected)
-        R = [n for n in sorted(selected, key=lambda n: self.order.get(n, n)) if self.ids.get(n) in elig]
-        d = gate(selected, R, ms, [elig[self.ids[n]] for n in R], self.cfg)
-        if not d.admit:
-            self.log(f"{cid}: mode0 reject ({d.why}) {d.numbers()}")
+        order = sorted(selected, key=lambda n: self.order.get(n, n))
+        R = [n for n in order if self.ids.get(n) in elig.memory]
+        plans = [(R, *self._plan("memory", R, selected, ms, elig))]
+        if cfg.fs and elig.fs and not self.fs_broken:
+            # A candidate certified only in fs mode (it starts processes): run the whole set in
+            # an fs overlay, if that is worth more than the in-memory run of the rest.
+            R_fs = [n for n in order if self.ids.get(n) in elig.fs]
+            if any(self.ids[n] not in elig.memory for n in R_fs):
+                plans.append((R_fs, *self._plan("fs", R_fs, selected, ms, elig)))
+        admitted = [p for p in plans if p[2].admit]
+        if not admitted:
+            for _, _, d in plans:
+                tag = "" if d.mode == "memory" else " fs"
+                self.log(f"{cid}: mode0{tag} reject ({d.why}) {d.numbers()}")
             return selected
-        cfg = self.cfg
+        R, per_run, d = max(admitted, key=lambda p: p[2].benefit - p[2].cpu)
         if self.spent + d.cpu > cfg.cpu_budget + EPS:
             if self.spent >= cfg.cpu_budget:
                 self._disable(f"cpu budget spent ({self.spent:.2f}s)")
             self.log(f"{cid}: mode0 reject (cpu budget: spent {self.spent:.2f}s) {d.numbers()}")
             return selected
-        now = self.clock()
-        avail = min(self.started + self.wall_budget, self.started + self.hard_budget - cfg.reserve) - now
+        avail = self._avail()
         if avail < d.cpu + cfg.margin:
             self.log(f"{cid}: mode0 reject (wall budget: {avail:.1f}s left) {d.numbers()}")
             return selected
-        caps = [round(cfg.cap(self.seconds[n]), 3) for n in R]
-        timeout = min(cfg.startup_cap + sum(caps) + cfg.margin, avail)
+        if d.mode == "fs":
+            return selected - self._run_fs(cid, R, res, d, per_run)
         spec = {"kind": "mode0", "src": self.src_root,
                 "patched": overlay_spec(res.patched, self.src_root),
-                "engine": cfg.engine, "site": list(self.site), "startup_cap": cfg.startup_cap,
-                "tests": [{"id": self.ids[n], "cap": cap} for n, cap in zip(R, caps)]}
+                "engine": cfg.engine, "site": list(self.site), "startup_cap": cfg.startup_cap}
+        return selected - self._runs(cid, R, spec, d, per_run, avail)
+
+    def _run_fs(self, cid, R, res, d, per_run):
+        """Build a filesystem overlay of the patched tree, run in it, always remove it."""
+        cfg = self.cfg
+        workdir = self.fs_workdir or tempfile.gettempdir()
+        t0 = time.process_time()
         try:
-            out = self.execute(spec, timeout)
-        except Exception as error:  # noqa: BLE001
-            self.spent += d.cpu  # unknown: charge the estimate
-            self.log(f"{cid}: mode0 run failed {error!r}; kept {d.numbers()}")
-            return selected
-        cpu = out.get("cpu", 0.0) if isinstance(out, dict) else None
-        if not _number(cpu):
-            cpu = d.cpu  # unknown: charge the estimate
-        self.spent += cpu
-        passed = _passed(out, [self.ids[n] for n in R])
-        dropped = {n for n in R if self.ids[n] in passed}
-        kept = selected - dropped
-        counts = {}
-        outcomes = out.get("outcomes") if isinstance(out, dict) else None
-        for o in outcomes.values() if isinstance(outcomes, dict) else ():
-            counts[str(o)] = counts.get(str(o), 0) + 1
-        info = out if isinstance(out, dict) else {}
-        wall = info.get("wall") if _number(info.get("wall")) else 0.0
-        self.log(f"{cid}: mode0 admit {d.numbers()} -> dropped {len(dropped)}/{len(R)} "
-                 f"{dict(sorted(counts.items()))} rc={info.get('returncode')} "
-                 f"timeout={info.get('timed_out')} cpu={cpu:.3f}s wall={wall:.2f}s spent={self.spent:.2f}s")
-        if self.spent >= cfg.cpu_budget:
-            self._disable(f"cpu budget spent ({self.spent:.2f}s)")
-        return kept
+            root = ovl.build(self.src_root, dict(res.patched), workdir)
+        except Exception as error:  # noqa: BLE001 - OverlayError or anything else: keep
+            self.spent += time.process_time() - t0
+            self.log(f"{cid}: mode0 fs overlay failed {error!r}; kept {d.numbers()}")
+            return set()
+        try:
+            spec = {"kind": "mode0", "engine": cfg.engine, "site": list(self.site),
+                    "startup_cap": cfg.startup_cap, **ovl.spec_fields(root)}
+            self.spent += time.process_time() - t0
+            return self._runs(cid, R, spec, d, per_run, None, cpu_count=cfg.fs_cpus)
+        finally:
+            t1 = time.process_time()
+            try:
+                ovl.remove(root)
+            except Exception as error:  # noqa: BLE001
+                self.log(f"{cid}: mode0 fs overlay {root} not removed {error!r}; fs off")
+                self.fs_broken = True
+            self.spent += time.process_time() - t1
+
+    def _runs(self, cid, R, spec, d, per_run, avail, cpu_count=None):
+        """Run R once per hash seed (cfg.runs), each later run only on the tests that passed
+        every earlier one; the tests that passed them all (dropped from the selection)."""
+        cfg = self.cfg
+        runs = cfg.runs
+        alive = list(R)
+        tag = "" if d.mode == "memory" else " fs"
+        for k, seed in enumerate(runs):
+            est = d.cpu if len(runs) == 1 and d.mode == "memory" else per_run(alive)
+            if avail is None or k > 0:
+                avail = self._avail()  # the overlay build, earlier runs and probes took wall
+                if k > 0 and self.spent + est > cfg.cpu_budget + EPS:
+                    self.log(f"{cid}: mode0 seed {seed} skipped (cpu budget); kept")
+                    return set()
+                if avail < est + cfg.margin:
+                    self.log(f"{cid}: mode0 seed {seed} skipped (wall budget: {avail:.1f}s left); kept")
+                    return set()
+            caps = [round(cfg.cap(self.seconds[n]), 3) for n in alive]
+            timeout = min(cfg.startup_cap + sum(caps) + cfg.margin, avail)
+            run_spec = dict(spec, tests=[{"id": self.ids[n], "cap": cap} for n, cap in zip(alive, caps)])
+            kwargs = {}
+            if seed is not None:
+                kwargs["hash_seed"] = seed
+            if cpu_count is not None:
+                kwargs["cpu_count"] = cpu_count
+            try:
+                out = self.execute(run_spec, timeout, **kwargs)
+            except Exception as error:  # noqa: BLE001
+                self.spent += est  # unknown: charge the estimate
+                self.log(f"{cid}: mode0{tag} run failed {error!r}; kept {d.numbers()}")
+                return set()
+            cpu = out.get("cpu", 0.0) if isinstance(out, dict) else None
+            if not _number(cpu):
+                cpu = est  # unknown: charge the estimate
+            self.spent += cpu
+            passed = _passed(out, [self.ids[n] for n in alive])
+            survivors = [n for n in alive if self.ids[n] in passed]
+            counts = {}
+            outcomes = out.get("outcomes") if isinstance(out, dict) else None
+            for o in outcomes.values() if isinstance(outcomes, dict) else ():
+                counts[str(o)] = counts.get(str(o), 0) + 1
+            info = out if isinstance(out, dict) else {}
+            wall = info.get("wall") if _number(info.get("wall")) else 0.0
+            what = "dropped" if k == len(runs) - 1 else f"seed {seed} passed"
+            seed_tag = "" if seed is None else f" seed={seed} est={est:.3f}"
+            self.log(f"{cid}: mode0{tag} admit {d.numbers()}{seed_tag} -> {what} {len(survivors)}/{len(alive)} "
+                     f"{dict(sorted(counts.items()))} rc={info.get('returncode')} "
+                     f"timeout={info.get('timed_out')} cpu={cpu:.3f}s wall={wall:.2f}s spent={self.spent:.2f}s")
+            if self.spent >= cfg.cpu_budget:
+                self._disable(f"cpu budget spent ({self.spent:.2f}s)")
+            alive = survivors
+            if not alive:
+                return set()
+            if k < len(runs) - 1 and self.off is not None:
+                self.log(f"{cid}: mode0 later seeds skipped (mode0 off); kept")
+                return set()
+        return set(alive)
 
 
 def _passed(out, ids):
