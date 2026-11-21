@@ -49,6 +49,19 @@ def strict_paths():
     return os.environ.get("BR_STRICT_PATHS") == "1"
 
 
+def _exact_case(src_root, path):
+    """False when `path` exists only through a case-insensitive file system (macOS)."""
+    here = src_root
+    for part in path.split("/"):
+        try:
+            if part not in os.listdir(here):
+                return False
+        except OSError:
+            return False
+        here = os.path.join(here, part)
+    return True
+
+
 def _kills_process(fp):
     path = fp.path or ""
     if not path.endswith(".py"):
@@ -151,7 +164,8 @@ def commit_impact(file_patches, src_root, maps, import_refiner=None, import_prob
         for fp in file_patches:
             if fp.odd:
                 raise Everything(f"{fp.path!r}: {fp.odd}")
-            if fp.old_path is not None and not fp.mode_only and read_src(src_root, fp.old_path) is None:
+            if fp.old_path is not None and not fp.mode_only and (
+                    read_src(src_root, fp.old_path) is None or not _exact_case(src_root, fp.old_path)):
                 raise Everything(f"{fp.old_path}: changes a file the pinned tree does not have")
     if crash_guard():
         for fp in file_patches:
