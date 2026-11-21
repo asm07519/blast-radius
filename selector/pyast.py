@@ -602,6 +602,7 @@ _SIMPLE_CLASS_HEADER = re.compile(rb"class[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*(?:\
                                   rb"(?:,[ \t]*[A-Za-z_][A-Za-z0-9_.]*[ \t]*)*,?)?[ \t]*)\))?[ \t]*:")
 _STRING_ON_LINE = re.compile(rb"'(?:[^'\\\n]|\\.)*'|\"(?:[^\"\\\n]|\\.)*\"")
 _DEF_START = re.compile(rb"(?:def|async)[ \t]")
+_AS_NAME = re.compile(rb"\bas[ \t]+([A-Za-z_][A-Za-z0-9_]*)")
 
 
 def _has_code(line):
@@ -631,7 +632,8 @@ def _code_depth(text, depth):
 def class_statements_to_parse(src, special_bases):
     """Class statements that may have a decorator, a keyword, type parameters, a base that is not
     a plain dotted name, or a base whose last name is in special_bases, found from the bytes
-    alone (~30x cheaper than parsing): a list of (line, class name or None, at column 0, why);
+    alone (~30x cheaper than parsing; an undotted base bound by some `as NAME` in the module
+    counts as possibly special): a list of (line, class name or None, at column 0, why);
     the name is given only when exactly one class line of the module has it. An empty list
     means the module certainly has none.
 
@@ -648,6 +650,9 @@ def class_statements_to_parse(src, special_bases):
     lines = src.splitlines()  # \n, \r\n and \r: Python's newlines
     out = []
     names = {}
+    # `from enum import Enum as E`: a base named by such an alias is judged by what it resolves to,
+    # which only parsing tells (a dotted base keeps its last name through an alias of its head)
+    aliases = {m.decode() for m in _AS_NAME.findall(src)}
     for i, line in enumerate(lines):
         stripped = line.lstrip(b" \t\f")
         if stripped.startswith(b"class") and not (stripped[5:6].isalnum() or stripped[5:6] == b"_"):
@@ -666,7 +671,8 @@ def class_statements_to_parse(src, special_bases):
                 continue
             for base in (m.group(1) or b"").split(b","):
                 base = base.strip()
-                if base and base.rsplit(b".", 1)[-1].decode() in special_bases:
+                if base and (base.rsplit(b".", 1)[-1].decode() in special_bases
+                             or (b"." not in base and base.decode() in aliases)):
                     out.append((i + 1, name, top, f"base {base.decode()}"))
                     break
         elif stripped.startswith(b"@"):
