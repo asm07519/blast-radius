@@ -25,9 +25,10 @@ _COOKIE = re.compile(rb"^[ \t\f]*#.*?coding[:=][ \t]*([-\w.]+)")
 
 
 class Site:
-    __slots__ = ("kind", "lines", "names", "why", "class_path", "literal", "proof")
+    __slots__ = ("kind", "lines", "names", "why", "class_path", "literal", "proof", "annotated", "class_heads")
 
-    def __init__(self, kind, lines=(), names=(), why="", class_path=None, literal=False, proof=None):
+    def __init__(self, kind, lines=(), names=(), why="", class_path=None, literal=False, proof=None,
+                 annotated=False, class_heads=None):
         self.kind = kind
         self.lines = set(lines)
         self.names = set(names)
@@ -37,6 +38,12 @@ class Site:
         # (line, col, end_line, old_op, new_op) when the only difference is one comparison
         # swapping `is`<->`==` or `is not`<->`!=`; the selector may prove it a no-op.
         self.proof = proof
+        # The changed, inserted or removed statement is an annotated assignment (or one side of
+        # an Assign<->AnnAssign conversion): its annotation is evaluated, and @dataclass /
+        # NamedTuple / TypedDict consume annotated names.
+        self.annotated = annotated
+        # For class-body sites: one ClassHead per class on class_path (outermost first).
+        self.class_heads = class_heads
 
     def __repr__(self):
         ls = sorted(self.lines)
@@ -210,8 +217,10 @@ class Analysis:
                 if type(o) is type(n):
                     self.diff_stmt(o, n, scope, olds, i1 + idx, header)
                 else:
-                    self.removed(o, scope, olds, i1 + idx, header)
-                    self.inserted(n, scope, olds, i1 + idx, header, at_start=(i1 + idx == 0))
+                    # e.g. `X = 1` -> `X: int = 1`: both halves count as annotated
+                    conv = isinstance(o, ast.AnnAssign) or isinstance(n, ast.AnnAssign)
+                    self.removed(o, scope, olds, i1 + idx, header, annotated=conv)
+                    self.inserted(n, scope, olds, i1 + idx, header, at_start=(i1 + idx == 0), annotated=conv)
             for idx in range(k, len(o_part)):
                 self.removed(o_part[idx], scope, olds, i1 + idx, header)
             for idx in range(k, len(n_part)):
@@ -247,7 +256,7 @@ class Analysis:
         else:
             self.sites.append(Site("import", lines, names, why=why))
 
-    def removed(self, o, scope, olds, index, header):
+    def removed(self, o, scope, olds, index, header, annotated=False):
         if _is_const_expr(o):
             if index == 0 and _is_doc(o) and scope[0] != "function_body_nodoc":
                 self.sites.append(Site("doc", span(o), why="docstring removed"))
@@ -258,11 +267,13 @@ class Analysis:
             self.sites.append(Site("call", self._own_lines(o, span(o), olds, index, header), why="stmt removed"))
         else:
             self.sites.append(Site("import", span(o), bound_names(o), why="stmt removed",
-                                   class_path=_class_path(scope), literal=_literal_stmt(o)))
+                                   class_path=_class_path(scope), literal=_literal_stmt(o),
+                                   annotated=annotated or isinstance(o, ast.AnnAssign),
+                                   class_heads=_class_heads(scope)))
             if isinstance(o, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 self.sites.append(Site("call", span(o), why="def removed"))
 
-    def inserted(self, n, scope, olds, index, header, at_start):
+    def inserted(self, n, scope, olds, index, header, at_start, annotated=False):
         if _is_const_expr(n):
             if at_start and _is_doc(n):
                 self.sites.append(Site("doc", self._neighbour_lines(olds, index, header), why="docstring added"))
@@ -274,7 +285,9 @@ class Analysis:
             self.sites.append(Site("call", lines, why="stmt inserted"))
         else:
             self.sites.append(Site("import", lines, bound_names(n), why="stmt inserted",
-                                   class_path=_class_path(scope), literal=_literal_stmt(n)))
+                                   class_path=_class_path(scope), literal=_literal_stmt(n),
+                                   annotated=annotated or isinstance(n, ast.AnnAssign),
+                                   class_heads=_class_heads(scope)))
 
     # -- statements of the same type
     def diff_stmt(self, o, n, scope, olds, index, header):
@@ -287,12 +300,12 @@ class Analysis:
             if any(dump_field(o, f) != dump_field(n, f) for f in hdr):
                 self._site_for_scope(scope, _header_lines(o), {o.name, "*"}, "class header")
             if scope[0] == "module":
-                path = [o.name]
+                path, heads = [o.name], (class_head(o),)
             elif scope[0] == "class" and len(scope) > 2 and scope[2] is not None:
-                path = scope[2] + [o.name]
+                path, heads = scope[2] + [o.name], scope[3] + (class_head(o),)
             else:
-                path = None  # class created inside a function
-            self.diff_body(o.body, n.body, ("class", o, path), _header_lines(o))
+                path, heads = None, None  # class created inside a function
+            self.diff_body(o.body, n.body, ("class", o, path, heads), _header_lines(o))
             return
         compound = _COMPOUND.get(type(o))
         if compound is not None:
@@ -337,7 +350,9 @@ class Analysis:
             self.sites.append(Site("call", lines, why="lambda/genexpr body changed"))
             return
         self.sites.append(Site("import", span(o), bound_names(o), why="module/class stmt changed",
-                               class_path=_class_path(scope), literal=_literal_change(o, n)))
+                               class_path=_class_path(scope), literal=_literal_change(o, n),
+                               annotated=isinstance(o, ast.AnnAssign) or isinstance(n, ast.AnnAssign),
+                               class_heads=_class_heads(scope)))
 
     def _diff_def(self, o, n, scope, olds, index, header):
         sig_changed = dump_field(o, "args") != dump_field(n, "args")
@@ -407,6 +422,34 @@ def _class_path(scope):
     return None
 
 
+def _class_heads(scope):
+    if scope[0] == "class" and len(scope) > 3:
+        return scope[3]
+    return None
+
+
+def _dotted(node):
+    """`a.b.C` for a plain name chain, else None."""
+    parts = []
+    while isinstance(node, ast.Attribute):
+        parts.append(node.attr)
+        node = node.value
+    if not isinstance(node, ast.Name):
+        return None
+    parts.append(node.id)
+    return ".".join(reversed(parts))
+
+
+def class_head(node):
+    """What a class statement passes to class creation, besides its body:
+    (number of decorators, bases, keywords, has type parameters). Each base is a dotted name
+    such as "exp.Expression", or None when it is not a plain name chain (a call, a subscript
+    like Generic[T], a starred expression); keywords are (arg, dotted value or None), arg None
+    for **kwargs."""
+    return (len(node.decorator_list), tuple(_dotted(b) for b in node.bases),
+            tuple((k.arg, _dotted(k.value)) for k in node.keywords), bool(getattr(node, "type_params", None)))
+
+
 _CONTAINERS = (ast.Dict, ast.List, ast.Tuple, ast.Set)
 
 
@@ -429,6 +472,15 @@ def literal_guard():
     Read on every call so tests can toggle it within one process.
     """
     return os.environ.get("BR_LITERAL_GUARD") == "1"
+
+
+def literal_probe():
+    """BR_LITERAL_PROBE=1: literal narrowing is only used after the patched code is seen to
+    import cleanly, with static exclusions first (see impact.refine_class_literal).
+
+    Read on every call so tests can toggle it within one process. Independent of literal_guard.
+    """
+    return os.environ.get("BR_LITERAL_PROBE") == "1"
 
 
 def _evaluates(node, hashable=False):
@@ -466,6 +518,11 @@ def _literal_change(o, n):
     if isinstance(o, (ast.Assign, ast.AnnAssign)):
         if dump_field(o, "targets" if isinstance(o, ast.Assign) else "target") != \
                 dump_field(n, "targets" if isinstance(n, ast.Assign) else "target"):
+            return False
+        if literal_probe() and not all(isinstance(t, ast.Name) for t in (o.targets if isinstance(o, ast.Assign)
+                                                                         else [o.target])):
+            # `D["k"] = 1`, `x.a = 1`, `A, B = 1, 2`: the store may mutate an object shared with other
+            # classes (an inherited dict), so the change is not confined to this class's users.
             return False
         if isinstance(o, ast.AnnAssign) and dump_field(o, "annotation") != dump_field(n, "annotation"):
             return False
