@@ -17,6 +17,7 @@ compared by AST, which ignores comments and formatting inside them.
 """
 
 import ast
+import os
 import re
 from difflib import SequenceMatcher
 
@@ -422,12 +423,39 @@ def _pure_literal(node):
     return False
 
 
+def literal_guard():
+    """BR_LITERAL_GUARD=1: literal narrowing also needs ast.literal_eval to succeed (PRD §6 rule 5).
+
+    Read on every call so tests can toggle it within one process.
+    """
+    return os.environ.get("BR_LITERAL_GUARD") == "1"
+
+
+def _evaluates(node, hashable=False):
+    """ast.literal_eval builds this exact value without raising (and, when it must be
+    hashable because it is a dict key or set element, hashing it does not raise).
+
+    literal_eval is stricter than Python (it rejects `not`, `- -1`, `-True`), which only
+    costs a fallback. Any exception, RecursionError and MemoryError included, means no.
+    """
+    try:
+        value = ast.literal_eval(node)
+        if hashable:
+            hash(value)
+    except Exception:
+        return False
+    return True
+
+
 def _literal_stmt(stmt):
     """An assignment of a pure literal to plain names."""
+    guard = literal_guard()
     if isinstance(stmt, ast.Assign):
-        return all(isinstance(t, ast.Name) for t in stmt.targets) and _pure_literal(stmt.value)
+        return all(isinstance(t, ast.Name) for t in stmt.targets) and _pure_literal(stmt.value) \
+            and (not guard or _evaluates(stmt.value))
     if isinstance(stmt, ast.AnnAssign):
-        return isinstance(stmt.target, ast.Name) and stmt.value is not None and _pure_literal(stmt.value)
+        return isinstance(stmt.target, ast.Name) and stmt.value is not None and _pure_literal(stmt.value) \
+            and (not guard or _evaluates(stmt.value))
     return False
 
 
@@ -443,7 +471,69 @@ def _literal_change(o, n):
             return False
         if o.value is None or n.value is None:
             return False
+        if literal_guard():
+            # a RecursionError propagates, as from _literal_expr: Analysis.run turns it into "too deep"
+            return _guarded_literal_expr(o.value, n.value, False)
         return _literal_expr(o.value, n.value)
+    return False
+
+
+def _guarded_literal_expr(a, b, hashable):
+    """_literal_expr, but every changed literal piece (old and new) must pass ast.literal_eval
+    in the context it sits in: a dict key or set element (or an element of a tuple that is
+    one) must also be hashable. Accepts a subset of what _literal_expr accepts.
+
+    `hashable` is true when the value of a/b is used as a dict key or set element.
+    """
+    if dump(a) == dump(b):
+        return True  # unchanged: the old module imported, so it built this before
+    if _pure_literal(a) and _pure_literal(b):
+        return _evaluates(a, hashable) and _evaluates(b, hashable)
+    if type(a) is not type(b):
+        return False
+    if isinstance(a, ast.Dict):
+        if hashable:
+            return False  # a dict is never hashable
+        ka = [dump(k) for k in a.keys if k is not None]
+        kb = [dump(k) for k in b.keys if k is not None]
+        if len(set(ka)) != len(ka) or len(set(kb)) != len(kb):
+            return False  # a repeated key hides the earlier entry's value from the matching below
+        pa = {dump(k): (k, v) for k, v in zip(a.keys, a.values) if k is not None}
+        pb = {dump(k): (k, v) for k, v in zip(b.keys, b.values) if k is not None}
+        if None in a.keys or None in b.keys:
+            if dump_list([v for k, v in zip(a.keys, a.values) if k is None]) != \
+                    dump_list([v for k, v in zip(b.keys, b.values) if k is None]):
+                return False
+        for key in set(pa) | set(pb):
+            ea, eb = pa.get(key), pb.get(key)
+            if ea is None or eb is None:
+                # an entry was added or removed: its key must be a hashable literal, its value a literal
+                kn, v = ea if ea is not None else eb
+                if not (_pure_literal(kn) and _pure_literal(v)):
+                    return False
+                if not (_evaluates(kn, hashable=True) and _evaluates(v)):
+                    return False
+            elif not _guarded_literal_expr(ea[1], eb[1], False):
+                return False
+        return True
+    if isinstance(a, (ast.List, ast.Tuple, ast.Set)):
+        if hashable and not isinstance(a, ast.Tuple):
+            return False  # lists and sets are never hashable
+        # set elements must hash; tuple elements must hash when the tuple itself must
+        inner = isinstance(a, ast.Set) or hashable
+        if len(a.elts) == len(b.elts):
+            return all(_guarded_literal_expr(x, y, inner) for x, y in zip(a.elts, b.elts))
+        da, db = [dump(x) for x in a.elts], [dump(y) for y in b.elts]
+        sm = SequenceMatcher(None, da, db, autojunk=False)
+        for tag, i1, i2, j1, j2 in sm.get_opcodes():
+            if tag == "equal":
+                continue
+            for x in a.elts[i1:i2] + b.elts[j1:j2]:
+                if not (_pure_literal(x) and _evaluates(x, inner)):
+                    return False
+        return True
+    # A UnaryOp pair reaches here only when an operand is not a pure literal. `not` is
+    # rejected by rule; unary -/+ on anything but a number raises, so neither can narrow.
     return False
 
 
