@@ -5,6 +5,9 @@ Invoked by selector/replica.py as:
 spec: {"src": pinned source root, "patched": {module: [path, base64 source]},
        "module": ..., "cls": ..., "method": ..., "restrict": {...}}
 Prints PASS or FAIL on stdout. Any exception is a FAIL.
+
+A spec with "kind": "mode0" runs whole tests instead (selector/mode0_runner.py documents
+that spec and its result file); nothing is printed and the exit code matters.
 """
 
 import base64
@@ -17,9 +20,12 @@ import sys
 import unittest
 
 
-def main():
-    spec = json.load(open(sys.argv[1]))
-    patched = {name: (path, base64.b64decode(src)) for name, (path, src) in spec["patched"].items()}
+def install_overlay(src, patched_spec):
+    """Serve the patched modules from memory, then make `src` importable and the cwd.
+
+    patched_spec: {module: [path, base64 source]}. Returns the finder (sys.meta_path[0]).
+    """
+    patched = {name: (path, base64.b64decode(source)) for name, (path, source) in patched_spec.items()}
 
     class Loader(importlib.machinery.SourceFileLoader):
         def get_code(self, fullname):
@@ -38,11 +44,36 @@ def main():
             return importlib.util.spec_from_file_location(fullname, origin, loader=loader,
                                                           submodule_search_locations=search)
 
+    finder = Finder()
     sys.dont_write_bytecode = True
-    sys.meta_path.insert(0, Finder())
-    sys.path.insert(0, spec["src"])
-    os.chdir(spec["src"])
+    sys.meta_path.insert(0, finder)
+    sys.path.insert(0, src)
+    os.chdir(src)
     os.environ.setdefault("SKIP_INTEGRATION", "0")
+    return finder
+
+
+def run_mode0(spec):
+    """Never returns: the exit code is the protocol (0 = the result file is complete)."""
+    code = 70
+    try:
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mode0_runner.py")
+        mspec = importlib.util.spec_from_file_location("_br_mode0_runner", path)
+        module = importlib.util.module_from_spec(mspec)
+        mspec.loader.exec_module(module)
+        code = module.run(spec, install_overlay)
+    except BaseException:  # noqa: BLE001 - the result file then has no complete done line
+        code = 70
+    finally:
+        os._exit(code)
+
+
+def main():
+    spec = json.load(open(sys.argv[1]))
+    if spec.get("kind") == "mode0":
+        run_mode0(spec)
+
+    install_overlay(spec["src"], spec["patched"])
 
     if spec.get("kind") == "exec_fp":
         sys.path.insert(1, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
