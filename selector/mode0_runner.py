@@ -52,6 +52,45 @@ only stdlib code), "xfail", "subtest_skip", "pytest_import".
 Exit code 0 means the run finished normally (whatever the test outcomes). The consumer must
 treat ONLY "passed" as evidence, and only with exit code 0 and a final done line with
 "complete": true; see parse_results.
+
+Filesystem overlay mode ("overlay": "fs"; absent or "memory" = the in-memory overlay above,
+unchanged). The patched tree exists on disk (selector/overlay.py builds it), so processes the
+tests create import the patched files exactly as from a patched checkout:
+    {"kind": "mode0", "overlay": "fs",
+     "src": "<abs overlay root>",                      # overlay.spec_fields(root) gives these four
+     "patched": {},                                    # must be empty
+     "shadowed": ["<abs real path of the pinned original of every changed file>", ...],
+     "pinned": "<abs pinned root>",                    # optional; enables sys_path/write_pinned
+     ...the other fields as above}
+Flags in fs mode (memory mode never emits them):
+  UNSAFE "read_shadowed"  opened a shadowed original, or the pinned pyc of a changed module
+                          (e.g. via os.path.realpath(__file__)), in the runner or a child;
+         "sys_path"       a sys.path entry resolves into the pinned tree;
+         "write_pinned"   opened a file of the pinned tree for writing (through a symlink);
+         "audit_error"    the audit hook itself failed;
+         "spawn"          any process creation other than the two below: subprocess, os.system,
+                          os.exec*, os.posix_spawn, os.fork outside multiprocessing, the
+                          forkserver start method, or a multiprocessing child whose start
+                          could not be verified (cwd/sys.path/env/__main__/flags not those of
+                          this run).
+  info   "mp_spawn"       a multiprocessing spawn child, verified at creation: argv is exactly
+                          [sys.executable, *_args_from_interpreter_flags(), "-c",
+                          "from multiprocessing.spawn import spawn_main; spawn_main(...)",
+                          "--multiprocessing-fork"], inherited env/cwd/process group, cwd in the
+                          overlay, the overlay (and nothing in the pinned tree) on sys.path,
+                          __main__ is replica_runner.py. The child re-imports replica_runner.py
+                          as __mp_main__, which (env BR_MODE0_FS) checks cwd/sys.path/flags
+                          again and installs the same audit hook; anything wrong -> it exits
+                          with code 86/87 before running any task (a pool then breaks: the
+                          test errors). Its events go to <result>.mp and are folded in here.
+         "mp_fork"        os.fork from multiprocessing's popen_fork with the same state
+                          checks; the child inherits the hook and reports to <result>.mp.
+  Child-side flags (read_shadowed, spawn, ...) are sticky: they are added to the test that is
+  running when they are read and to every later test of the run (a pool worker outlives the
+  test that started it). At exit the runner kills and reaps its remaining children (so their
+  CPU is in the parent's wait4 rusage) and stops multiprocessing's resource tracker gracefully
+  (it unlinks leaked semaphores). The done line gains "overlay": "fs", "mp_children" (child
+  start reports) and "child_events".
 """
 
 import hashlib
@@ -62,8 +101,10 @@ import time
 
 SCHEMA = 1
 OUTCOMES = ("passed", "failed", "error", "skipped", "timeout", "notrun")
-UNSAFE_FLAGS = frozenset({"spawn", "meta_path", "cwd", "read_patched"})
+UNSAFE_FLAGS = frozenset({"spawn", "meta_path", "cwd", "read_patched",
+                          "read_shadowed", "sys_path", "write_pinned", "audit_error"})
 STOP_FLAGS = frozenset({"meta_path", "cwd"})
+FS_ENV = "BR_MODE0_FS"
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPLICA_RUNNER = os.path.join(HERE, "replica_runner.py")
 EXIT_OK, EXIT_TIMEOUT, EXIT_ABORT, EXIT_BADSPEC = 0, 3, 4, 2
@@ -79,15 +120,21 @@ SEEDED_FLAGS = ("-s", "-P", "-S", "-B")
 
 # --------------------------------------------------------------------------- parent side
 
-def launch_argv(spec_path, python=None, hash_seed=None, env=None):
-    """(argv, env) to launch the Mode 0 runner. hash_seed=None is the production launch."""
+def launch_argv(spec_path, python=None, hash_seed=None, env=None, cpu_count=None):
+    """(argv, env) to launch the Mode 0 runner. hash_seed=None is the production launch.
+
+    cpu_count=N adds `-X cpu_count=N` (Python >= 3.13: os.cpu_count() and os.process_cpu_count()
+    return N in the runner, so ProcessPoolExecutor() starts at most N workers). 3.13 does not
+    pass it on to multiprocessing children (3.14 does); they never size pools themselves.
+    """
     python = python or sys.executable
     env = dict(os.environ if env is None else env)
+    xopt = [] if cpu_count is None else ["-X", f"cpu_count={int(cpu_count)}"]
     if hash_seed is None:
-        return [python, *ISO_FLAGS, REPLICA_RUNNER, spec_path], env
+        return [python, *ISO_FLAGS, *xopt, REPLICA_RUNNER, spec_path], env
     env = {k: v for k, v in env.items() if not k.startswith("PYTHON")}
     env["PYTHONHASHSEED"] = str(int(hash_seed))
-    return [python, *SEEDED_FLAGS, REPLICA_RUNNER, spec_path], env
+    return [python, *SEEDED_FLAGS, *xopt, REPLICA_RUNNER, spec_path], env
 
 
 def _strict_constant(name):
@@ -156,13 +203,15 @@ def parse_results(path, expected_ids, returncode=None):
     return out
 
 
-def execute(spec, timeout, python=None, hash_seed=None, workdir=None, env=None):
+def execute(spec, timeout, python=None, hash_seed=None, workdir=None, env=None, cpu_count=None):
     """Run one Mode 0 spec in a fresh process (own session; the whole group is killed on
     timeout and after exit). spec["result"] is set here. Returns a dict:
         outcomes   {id: outcome} from parse_results (only "passed" is evidence)
         returncode exit code (negative: signal), None if it could not be started
-        cpu        user+sys of the child and its reaped descendants (wait4 rusage)
+        cpu        user+sys of the child and its reaped descendants (wait4 rusage; an fs-mode
+                   runner reaps its multiprocessing children before it exits)
         wall       seconds; timed_out bool; done the done line (dict) or None; lines {id: line}
+    cpu_count: see launch_argv (None = unchanged launch).
     """
     import signal
     import subprocess
@@ -179,7 +228,8 @@ def execute(spec, timeout, python=None, hash_seed=None, workdir=None, env=None):
         spec = dict(spec, result=res_path)
         with os.fdopen(fd, "w") as fh:
             json.dump(spec, fh)
-        argv, run_env = launch_argv(spec_path, python=python, hash_seed=hash_seed, env=env)
+        argv, run_env = launch_argv(spec_path, python=python, hash_seed=hash_seed, env=env,
+                                    cpu_count=cpu_count)
         try:
             proc = subprocess.Popen(argv, env=run_env, stdin=subprocess.DEVNULL,
                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -230,7 +280,7 @@ def execute(spec, timeout, python=None, hash_seed=None, workdir=None, env=None):
         return res
     finally:
         res["wall"] = time.monotonic() - t0
-        for p in (spec_path, res_path):
+        for p in (spec_path, res_path, res_path + ".mp"):
             try:
                 os.remove(p)
             except OSError:
@@ -316,6 +366,8 @@ class _Results:
         self.startup_cpu = None
         self.startup_flags = set()
         self.pytest_version = None
+        self.extra = None  # fs mode: callable -> extra done-line fields
+        self.timed_out = False
         self._raw({"start": True, "schema": SCHEMA, "engine": engine, "pid": os.getpid(),
                    "n": len(ids)})
 
@@ -344,13 +396,19 @@ class _Results:
 
     def _done(self, complete, aborted=None, stopped=None):
         t = _times()
-        self._raw({"done": True, "complete": complete, "n": self.n, "counts": self.counts,
-                   "cpu": round(t.user + t.system, 6),
-                   "children_cpu": round(t.children_user + t.children_system, 6),
-                   "startup_cpu": None if self.startup_cpu is None else round(self.startup_cpu, 6),
-                   "wall": round(_mono() - self.t0, 6), "engine": self.engine,
-                   "python": sys.version.split()[0], "pytest": self.pytest_version,
-                   "aborted": aborted, "stopped": stopped, "flags": sorted(self.startup_flags)})
+        obj = {"done": True, "complete": complete, "n": self.n, "counts": self.counts,
+               "cpu": round(t.user + t.system, 6),
+               "children_cpu": round(t.children_user + t.children_system, 6),
+               "startup_cpu": None if self.startup_cpu is None else round(self.startup_cpu, 6),
+               "wall": round(_mono() - self.t0, 6), "engine": self.engine,
+               "python": sys.version.split()[0], "pytest": self.pytest_version,
+               "aborted": aborted, "stopped": stopped, "flags": sorted(self.startup_flags)}
+        if self.extra is not None:
+            try:
+                obj.update(self.extra())
+            except Exception:
+                obj["extra_error"] = True
+        self._raw(obj)
 
     def finish(self, complete=True, aborted=None, stopped=None, rest="notrun"):
         """Write `rest` for every test without a line, then the done line, and close."""
@@ -371,6 +429,7 @@ class _Results:
             if self.closed:
                 return
             self.closed = True
+            self.timed_out = True
             if self.current is not None and not startup:
                 self._test_line(self.current, "timeout", flags=("timeout",))
             for tid in self.ids:
@@ -396,6 +455,7 @@ class _Watchdog:
         self.cond = threading.Condition()
         self.deadline = None
         self.startup = False
+        self.before_exit = None  # fs mode: reap children before the timeout exit
         try:
             signal.signal(signal.SIGALRM, signal.SIG_DFL)
         except (ValueError, OSError):
@@ -436,6 +496,11 @@ class _Watchdog:
                 startup = self.startup
                 break
         self.results.abort_timeout(startup=startup)
+        if self.before_exit is not None:
+            try:
+                self.before_exit()
+            except BaseException:
+                pass
         os._exit(EXIT_TIMEOUT)
 
 
@@ -521,6 +586,349 @@ def _install_spawn_watch(ctx):
         pass
 
 
+# ------------------------------------------------------------ filesystem overlay mode
+
+_MP_SPAWN_PREFIX = "from multiprocessing.spawn import spawn_main; spawn_main("
+_STICKY = frozenset({"read_shadowed", "spawn", "write_pinned", "audit_error"})
+_CHILD_EVENT_FLAGS = {"read_shadowed": "read_shadowed", "spawn": "spawn", "bad": "spawn",
+                      "write_pinned": "write_pinned", "audit_error": "audit_error"}
+_WRITE_BITS = os.O_WRONLY | os.O_RDWR | os.O_APPEND | os.O_CREAT | os.O_TRUNC
+
+
+def _under(path, top):
+    return path == top or path.startswith(top + os.sep)
+
+
+class _Shadow:
+    """Matches opens of shadowed originals and of the pinned bytecode of changed modules."""
+
+    def __init__(self, paths):
+        self.files, self.names, self.pyc = set(), set(), {}
+        for p in paths:
+            for q in {os.path.abspath(p), os.path.realpath(p)}:
+                d, name = os.path.split(q)
+                self.files.add(q)
+                self.names.add(name)
+                if name.endswith(".py"):
+                    self.pyc.setdefault(name[:-3], set()).add(os.path.join(d, "__pycache__"))
+
+    def hit(self, path):
+        name = os.path.basename(path)
+        if name in self.names:
+            full = os.path.abspath(path)
+            return full in self.files or os.path.realpath(full) in self.files
+        if name.endswith(".pyc"):
+            dirs = self.pyc.get(name.split(".", 1)[0])
+            if dirs:
+                full = os.path.abspath(path)
+                return (os.path.dirname(full) in dirs
+                        or os.path.dirname(os.path.realpath(full)) in dirs)
+        return False
+
+
+class _FsCtx(_Ctx):
+    """fs mode: the Ctx of the runner (child=False) or of a multiprocessing child (True).
+
+    In the runner, flags go to the running test; in a child they are written as events to the
+    side file, which the runner reads in check_after()."""
+
+    def __init__(self, root, pinned, shadowed, side, env_value, child=False, side_fd=None):
+        super().__init__(root, None, set())
+        self.root = root
+        self.pinned = os.path.realpath(pinned) if pinned else None
+        self.shadow = _Shadow(shadowed)
+        self.side = side
+        self.env_value = env_value
+        self.child = child
+        self.side_fd = side_fd
+        self.sticky = set()
+        self.children = []
+        self.mp_started = 0
+        self.events = 0
+        self._offset = 0
+        self._tail = b""
+
+    # -- flags / events
+    def raise_flag(self, flag, **info):
+        if self.child:
+            self.event(dict(info, ev=flag))
+            return
+        self.flags.add(flag)
+        if flag in _STICKY:
+            self.sticky.add(flag)
+
+    def event(self, obj):
+        obj["pid"] = os.getpid()
+        data = (json.dumps(obj, separators=(",", ":")) + "\n").encode()
+        if len(data) > 512:
+            data = (json.dumps({"ev": obj["ev"], "pid": obj["pid"]}) + "\n").encode()
+        os.write(self.side_fd, data)
+
+    def drain(self):
+        """Fold child events written so far into flags (runner side)."""
+        out = set()
+        while True:
+            try:
+                chunk = os.pread(self.side_fd, 1 << 16, self._offset)
+            except OSError:
+                out.add("audit_error")
+                break
+            if not chunk:
+                break
+            self._offset += len(chunk)
+            self._tail += chunk
+        *lines, self._tail = self._tail.split(b"\n")
+        for line in lines:
+            self.events += 1
+            try:
+                ev = json.loads(line).get("ev")
+            except Exception:
+                out.add("audit_error")
+                continue
+            if ev == "start":
+                self.mp_started += 1
+            elif ev in _CHILD_EVENT_FLAGS:
+                out.add(_CHILD_EVENT_FLAGS[ev])
+            elif ev not in ("rtracker",):
+                out.add("audit_error")
+        self.sticky |= out & _STICKY
+        return out
+
+    # -- state checks
+    def pinned_entry(self, entry):
+        if not self.pinned:
+            return False
+        try:
+            return _under(os.path.realpath(entry or "."), self.pinned)
+        except Exception:
+            return True
+
+    def state_problem(self, spawn):
+        """Why a multiprocessing child started now would not run against the overlay."""
+        try:
+            if not _under(os.path.realpath(os.getcwd()), self.root):
+                return "cwd outside the overlay"
+        except OSError:
+            return "no cwd"
+        path = list(sys.path)
+        if "" in path:
+            return "'' on sys.path"
+        if self.root not in [os.path.abspath(p) for p in path if isinstance(p, str)]:
+            return "overlay not on sys.path"
+        if any(not isinstance(p, str) or self.pinned_entry(p) for p in path):
+            return "pinned tree on sys.path"
+        if os.environ.get(FS_ENV) != self.env_value:
+            return "environment changed"
+        if spawn:
+            main = sys.modules.get("__main__")
+            if getattr(main, "__spec__", None) is not None:
+                return "__main__ has a spec"
+            mfile = getattr(main, "__file__", None)
+            if not mfile or os.path.realpath(mfile) != os.path.realpath(REPLICA_RUNNER):
+                return "__main__ is not replica_runner.py"
+        return None
+
+    def check_after(self):
+        out = super().check_after()
+        try:
+            if any(not isinstance(p, str) or self.pinned_entry(p) for p in list(sys.path)):
+                out.add("sys_path")
+        except Exception:
+            out.add("audit_error")
+        out |= self.drain()
+        self.sticky |= out & _STICKY
+        return out | self.sticky
+
+    # -- children
+    def reap(self, grace=2.0):
+        """Kill and reap every child still ours, then stop the resource tracker gracefully."""
+        import signal
+
+        pids = list(self.children)
+        mpp = sys.modules.get("multiprocessing.process")
+        for p in list(getattr(mpp, "_children", ()) or ()):
+            try:
+                pids.append(p.pid)
+            except Exception:
+                pass
+        rt = getattr(sys.modules.get("multiprocessing.resource_tracker"), "_resource_tracker", None)
+        tracker = getattr(rt, "_pid", None)
+        live = []
+        for pid in dict.fromkeys(pids):
+            if not isinstance(pid, int) or pid <= 0 or pid == tracker:
+                continue
+            try:
+                if os.waitpid(pid, os.WNOHANG)[0] == 0:  # still our unreaped child
+                    os.kill(pid, signal.SIGKILL)
+                    live.append(pid)
+            except OSError:
+                pass
+        if tracker:
+            try:
+                fd = rt._fd
+                rt._fd = None
+                if fd is not None:
+                    os.close(fd)  # EOF: the tracker unlinks what is left, then exits
+            except Exception:
+                pass
+            live.append(tracker)
+        deadline = _mono() + grace
+        while live:
+            for pid in list(live):
+                try:
+                    done = os.waitpid(pid, os.WNOHANG)[0] != 0
+                except OSError:
+                    done = True
+                if done:
+                    live.remove(pid)
+            if live and _mono() > deadline:
+                for pid in live:
+                    try:
+                        os.kill(pid, signal.SIGKILL)
+                        os.waitpid(pid, 0)
+                    except OSError:
+                        pass
+                break
+            if live:
+                time.sleep(0.005)
+        if rt is not None and tracker:
+            rt._pid = None
+
+
+def _is_mp_spawn(args):
+    """fork_exec(...) arguments of util.spawnv_passfds launching a multiprocessing spawn child
+    of this interpreter, with inherited env and cwd, in our process group."""
+    import subprocess
+
+    if len(args) < 17 or args[4] is not None or args[5] is not None or args[15] or args[16] != -1:
+        return False
+    argv = [os.fsdecode(a) for a in args[0]]
+    exe = [os.fsdecode(a) for a in args[1]]
+    if len(argv) < 4 or argv[-1] != "--multiprocessing-fork" or argv[-3] != "-c":
+        return False
+    prog = argv[-2]
+    if not (prog.startswith(_MP_SPAWN_PREFIX) and prog.endswith(")")):
+        return False
+    inner = prog[len(_MP_SPAWN_PREFIX):-1]
+    for item in inner.split(", ") if inner else ():
+        key, _, value = item.partition("=")
+        if not key.isidentifier() or not (value.isdigit() or value == "None"):
+            return False
+    return (argv[0] == sys.executable and exe == [sys.executable]
+            and argv[1:-3] == subprocess._args_from_interpreter_flags())
+
+
+def _mp_fork_caller(frame):
+    mod = sys.modules.get("multiprocessing.popen_fork")
+    return (frame is not None and mod is not None and frame.f_code.co_name == "_launch"
+            and frame.f_code.co_filename == getattr(mod, "__file__", None))
+
+
+def _writes(mode, flags):
+    if isinstance(mode, str):
+        return any(c in mode for c in "wax+")
+    return isinstance(flags, int) and bool(flags & _WRITE_BITS)
+
+
+def _install_fs_watch(ctx):
+    shadow = ctx.shadow
+    spawn_events = _SPAWN_EVENTS - {"os.fork"}
+
+    def hook(event, args):
+        try:
+            if event == "open":
+                path = args[0]
+                if isinstance(path, int):
+                    return
+                path = os.fsdecode(path)
+                if shadow.hit(path):
+                    ctx.raise_flag("read_shadowed", path=path[-200:])
+                if (ctx.pinned and len(args) > 2 and _writes(args[1], args[2])
+                        and _under(os.path.realpath(os.path.abspath(path)), ctx.pinned)):
+                    ctx.raise_flag("write_pinned", path=path[-200:])
+            elif event == "os.fork":
+                if not ctx.child and _mp_fork_caller(sys._getframe(1)) and ctx.state_problem(False) is None:
+                    ctx.raise_flag("mp_fork")
+                else:
+                    ctx.raise_flag("spawn", what=event)
+            elif event in spawn_events:
+                ctx.raise_flag("spawn", what=event)
+        except Exception:
+            try:
+                ctx.raise_flag("audit_error")
+            except Exception:
+                pass
+
+    sys.addaudithook(hook)
+
+    def after_fork_in_child():
+        # A forked child (multiprocessing fork, or anything else - flagged in the parent)
+        # inherits this hook and reports through the inherited side-file descriptor.
+        ctx.child = True
+        ctx.children = []
+
+    os.register_at_fork(after_in_child=after_fork_in_child)
+
+    import _posixsubprocess
+
+    original = _posixsubprocess.fork_exec
+
+    def fork_exec(*args, **kwargs):
+        try:
+            if _is_resource_tracker(args[0]):
+                kind = "rtracker"
+            elif not ctx.child and _is_mp_spawn(args) and ctx.state_problem(True) is None:
+                kind = "mp_spawn"
+            else:
+                kind = "spawn"
+        except Exception:
+            kind = "spawn"
+        if kind == "rtracker" and ctx.child:
+            kind = "spawn"  # children reuse the runner's tracker; a new one is unexpected
+        ctx.raise_flag(kind, what="fork_exec")
+        pid = original(*args, **kwargs)
+        if not ctx.child:
+            ctx.children.append(pid)
+        return pid
+
+    _posixsubprocess.fork_exec = fork_exec
+
+
+def _fs_config(spec):
+    """fs-mode settings from a valid spec, None for the in-memory overlay; raises if invalid."""
+    mode = spec.get("overlay", "memory")
+    if mode == "memory":
+        return None
+    if mode != "fs" or spec.get("patched") != {}:
+        raise ValueError("overlay")
+    shadowed = spec.get("shadowed")
+    pinned = spec.get("pinned")
+    if (not isinstance(shadowed, list) or not all(isinstance(p, str) and os.path.isabs(p) for p in shadowed)
+            or not (pinned is None or (isinstance(pinned, str) and os.path.isabs(pinned)))):
+        raise ValueError("shadowed/pinned")
+    return {"shadowed": shadowed, "pinned": pinned}
+
+
+def child_init(env_value):
+    """In a multiprocessing spawn (or forkserver) child of an fs-mode runner: called when
+    replica_runner.py is imported as __mp_main__, i.e. after multiprocessing set sys.path, argv
+    and cwd from the parent and before any task is unpickled. Raises (the caller then exits
+    with 86) if the audit cannot be installed; exits 87 if the child is not in the overlay."""
+    cfg = json.loads(env_value)
+    fd = os.open(cfg["side"], os.O_WRONLY | os.O_APPEND)
+    ctx = _FsCtx(cfg["root"], cfg.get("pinned"), cfg["shadowed"], cfg["side"], env_value,
+                 child=True, side_fd=fd)
+    why = ctx.state_problem(spawn=False)
+    f = sys.flags
+    if why is None and not (f.dont_write_bytecode and f.no_site and f.no_user_site and f.safe_path):
+        why = "interpreter flags"
+    if why is not None:
+        ctx.event({"ev": "bad", "why": why})
+        os._exit(87)
+    _install_fs_watch(ctx)
+    ctx.event({"ev": "start", "cwd": os.getcwd()[-200:]})
+
+
 def _redirect_stdio(log=None):
     """stdin from /dev/null; stdout/stderr to /dev/null (or, for debugging only, a log file)."""
     devnull = os.open(os.devnull, os.O_RDWR)
@@ -556,31 +964,56 @@ def run(spec, install_overlay):
     try:
         _redirect_stdio(spec.get("log"))
         ids, caps = _validate(spec)
+        fs = _fs_config(spec)
     except Exception:
         return EXIT_BADSPEC
     results = _Results(spec["result"], ids, spec["engine"])
+    ctx = None
     try:
         os.environ["SKIP_INTEGRATION"] = "0"
         for var in ("PYTEST_ADDOPTS", "PYTEST_PLUGINS", "PYTEST_DEBUG", "PYTEST_CURRENT_TEST"):
             os.environ.pop(var, None)
+        os.environ.pop(FS_ENV, None)
         src = os.path.realpath(spec["src"])
-        patched_paths = set()
-        for path, _ in spec["patched"].values():
-            patched_paths.add(os.path.abspath(path))
-            patched_paths.add(os.path.realpath(path))
-        ctx = _Ctx(src, None, patched_paths)
-        _install_spawn_watch(ctx)
+        if fs is None:
+            patched_paths = set()
+            for path, _ in spec["patched"].values():
+                patched_paths.add(os.path.abspath(path))
+                patched_paths.add(os.path.realpath(path))
+            ctx = _Ctx(src, None, patched_paths)
+            _install_spawn_watch(ctx)
+        else:
+            side = spec["result"] + ".mp"
+            fd = os.open(side, os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND, 0o600)
+            env_value = json.dumps({"side": side, "root": src, "pinned": fs["pinned"],
+                                    "shadowed": fs["shadowed"]}, separators=(",", ":"))
+            ctx = _FsCtx(src, fs["pinned"], fs["shadowed"], side, env_value, side_fd=fd)
+            os.environ[FS_ENV] = env_value
+            _install_fs_watch(ctx)
+            results.extra = lambda: {"overlay": "fs", "mp_children": ctx.mp_started,
+                                     "child_events": ctx.events}
         watchdog = _Watchdog(results)
+        if fs is not None:
+            watchdog.before_exit = ctx.reap
         watchdog.arm(None, float(spec.get("startup_cap", 60.0)), startup=True)
         ctx.finder = install_overlay(src, spec["patched"])
         for d in spec.get("site", []):
             sys.path.append(d)
         if spec["engine"] == "unittest":
-            return _run_unittest(ids, caps, results, watchdog, ctx)
-        return _run_pytest(ids, caps, results, watchdog, ctx, src)
+            code = _run_unittest(ids, caps, results, watchdog, ctx)
+        else:
+            code = _run_pytest(ids, caps, results, watchdog, ctx, src)
+        if fs is not None and results.timed_out:
+            # The watchdog closed the results and is reaping children; killed pool workers
+            # can make the timed-out test return here first: keep the timeout exit code.
+            code = EXIT_TIMEOUT
+        return code
     except BaseException as error:  # noqa: BLE001 - anything unexpected: nothing passes
         results.finish(complete=False, aborted="error: " + _short(error))
         return EXIT_ABORT
+    finally:
+        if fs is not None and isinstance(ctx, _FsCtx) and not ctx.child:
+            ctx.reap()
 
 
 # ----------------------------------------------------------------- unittest engine
@@ -696,8 +1129,9 @@ def _run_unittest(ids, caps, results, watchdog, ctx):
     results.startup_flags |= ctx.flags
     ctx.flags = set()
     stop = ctx.check_after()
+    results.startup_flags |= stop  # memory mode: check_after only returns STOP_FLAGS
+    stop &= STOP_FLAGS
     if stop:
-        results.startup_flags |= stop
         results.finish(stopped=sorted(stop)[0], rest="error")
         return EXIT_OK
     watchdog.disarm()
@@ -895,8 +1329,9 @@ def _run_pytest(ids, caps, results, watchdog, ctx, src):
                 results.startup_flags |= ctx.flags
                 results.startup_cpu = _cpu()
                 stop = ctx.check_after()
+                results.startup_flags |= stop
+                stop &= STOP_FLAGS
                 if stop:  # collection displaced the overlay: nothing here is evidence
-                    results.startup_flags |= stop
                     state["stop"] = sorted(stop)[0]
                     item.session.shouldstop = "br-mode0: " + state["stop"]
             ctx.flags = flags = set()

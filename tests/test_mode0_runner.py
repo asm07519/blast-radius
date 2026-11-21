@@ -23,6 +23,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 from selector import mode0_runner as m0  # noqa: E402
+from selector import overlay  # noqa: E402
 
 PYTHON = os.environ.get("BR_MODE0_PYTHON") or sys.executable
 
@@ -230,6 +231,111 @@ FILES = {
                 with multiprocessing.get_context("spawn").Pool(1) as pool:
                     self.assertEqual(pool.apply(core.value), 1)
     ''',
+    "tests/test_fs.py": '''
+        import os
+        import subprocess
+        import sys
+        import time
+        import unittest
+        from concurrent.futures import ProcessPoolExecutor
+        from multiprocessing import get_context
+
+        from pkg import core
+
+        # The pinned tree when this file is a symlink in an fs overlay.
+        HERE = os.path.dirname(os.path.realpath(__file__))
+        KEEP = []
+
+
+        def real_core_text():
+            with open(os.path.join(HERE, "..", "pkg", "core.py")) as fh:
+                return fh.read()
+
+
+        def crash():
+            os._exit(3)
+
+
+        def burn(seconds):
+            end = time.process_time() + seconds
+            while time.process_time() < end:
+                pass
+            return os.getpid()
+
+
+        def record_and_sleep(where):
+            open(os.path.join(where, str(os.getpid())), "w").close()
+            time.sleep(600)
+
+
+        def exit_with_value():
+            sys.exit(core.value())
+
+
+        def pool(n=1):
+            return ProcessPoolExecutor(max_workers=n, mp_context=get_context("spawn"))
+
+
+        class TestFs(unittest.TestCase):
+            def test_pool_value(self):
+                with pool() as p:
+                    self.assertEqual(p.submit(core.value).result(), 1)
+
+            def test_read_real_path(self):
+                self.assertIn("def value", real_core_text())
+
+            def test_worker_reads_real_path(self):
+                with pool() as p:
+                    self.assertIn("def value", p.submit(real_core_text).result())
+
+            def test_subprocess(self):
+                subprocess.run([sys.executable, "-c", "pass"], check=True)
+
+            def test_pool_crash(self):
+                with pool() as p:
+                    p.submit(crash).result()
+
+            def test_pool_hang(self):
+                p = pool(2)
+                KEEP.append(p)
+                futures = [p.submit(record_and_sleep, os.environ["M0_PIDS"]) for _ in range(2)]
+                for f in futures:
+                    f.result()
+
+            def test_pool_left_running(self):
+                p = pool(1)
+                KEEP.append(p)  # never shut down: the runner reaps the worker
+                self.assertGreater(p.submit(burn, 0.6).result(), 0)
+
+            def test_cpu_count(self):
+                n = int(os.environ["M0_CPUS"])
+                self.assertEqual(os.process_cpu_count(), n)
+                with ProcessPoolExecutor(mp_context=get_context("spawn")) as p:
+                    self.assertEqual(p._max_workers, n)
+                    self.assertEqual(p.submit(core.value).result(), 1)
+                    self.assertEqual(len(set(p.map(burn, [0.2] * 8))), n)
+
+            def test_fork_value(self):
+                proc = get_context("fork").Process(target=exit_with_value)
+                proc.start()
+                proc.join()
+                self.assertEqual(proc.exitcode, 1)
+
+            def test_fork_reads_real_path(self):
+                proc = get_context("fork").Process(target=real_core_text)
+                proc.start()
+                proc.join()
+                self.assertEqual(proc.exitcode, 0)
+
+            def test_forkserver(self):
+                proc = get_context("forkserver").Process(target=exit_with_value)
+                proc.start()
+                proc.join()
+                self.assertEqual(proc.exitcode, 1)
+
+            def test_plain(self):
+                self.assertEqual(core.value(), 1)
+    ''',
     "tests/test_state.py": '''
         import os
         import sys
@@ -299,14 +405,29 @@ class Repo:
             name = name[: -len(".__init__")]
         return {name: [os.path.join(self.root, rel), base64.b64encode(text.encode()).decode()]}
 
-    def run(self, engine, ids, cap=20.0, patched=None, timeout=60.0, site=None, caps=None):
+    def run(self, engine, ids, cap=20.0, patched=None, timeout=60.0, site=None, caps=None, **kw):
         spec = {"kind": "mode0", "src": self.root, "patched": patched or {}, "engine": engine,
                 "site": site if site is not None else (PYTEST_SITE or []),
                 "tests": [{"id": i, "cap": (caps or {}).get(i, cap)} for i in ids]}
-        return m0.execute(spec, timeout, python=PYTHON, workdir=self.work)
+        return m0.execute(spec, timeout, python=PYTHON, workdir=self.work, **kw)
+
+    def run_fs(self, engine, ids, changes=None, cap=20.0, timeout=60.0, site=None, **kw):
+        """Build an fs overlay (outside the repo), run, remove it."""
+        ovdir = self.root + "_ov"
+        os.makedirs(ovdir, exist_ok=True)
+        root = overlay.build(self.root, {k: v.encode() for k, v in (changes or {}).items()},
+                             ovdir, mirror=("pkg", "tests"))
+        try:
+            spec = {"kind": "mode0", "engine": engine,
+                    "site": site if site is not None else (PYTEST_SITE or []),
+                    "tests": [{"id": i, "cap": cap} for i in ids], **overlay.spec_fields(root)}
+            return m0.execute(spec, timeout, python=PYTHON, workdir=self.work, **kw)
+        finally:
+            overlay.remove(root)
 
     def close(self):
         shutil.rmtree(self.root, ignore_errors=True)
+        shutil.rmtree(self.root + "_ov", ignore_errors=True)
 
 
 class EngineMixin:
@@ -484,6 +605,189 @@ class TestPytestEngine(EngineMixin, unittest.TestCase):
         self.assertTrue(b["done"]["pytest"])
 
 
+F = "tests/test_fs.py::TestFs::"
+PATCH_CORE = {"pkg/core.py": "def value():\n    return 2\n"}
+COMMENT_CORE = {"pkg/core.py": "def value():\n    return 1\n# changed\n"}
+
+
+def _alive(pid):
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+class TestFsMode(unittest.TestCase):
+    """"overlay": "fs": the patched tree on disk, multiprocessing children audited."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.repo = Repo()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.repo.close()
+
+    def run_fs(self, ids, **kw):
+        return self.repo.run_fs(kw.pop("engine", "unittest"), ids, **kw)
+
+    def test_unpatched_passes(self):
+        ids = [F + "test_pool_value", F + "test_plain", F + "test_read_real_path", B + "test_pass",
+               B + "test_read_source"]
+        res = self.run_fs(ids)
+        self.assertEqual(res["returncode"], 0)
+        self.assertEqual(set(res["outcomes"].values()), {"passed"}, res["lines"])
+        self.assertEqual(res["done"]["overlay"], "fs")
+        self.assertEqual(res["done"]["mp_children"], 1)
+        self.assertIn("mp_spawn", res["lines"][F + "test_pool_value"]["flags"])
+        self.assertFalse(m0.UNSAFE_FLAGS & set(res["lines"][F + "test_pool_value"]["flags"]))
+
+    def test_patched_module_fails(self):
+        res = self.run_fs([B + "test_pass"], changes=PATCH_CORE)
+        self.assertEqual(res["outcomes"][B + "test_pass"], "failed")
+
+    def test_patched_test_module_fails(self):
+        source = textwrap.dedent(FILES["tests/test_basic.py"]).lstrip("\n").replace(
+            "self.assertEqual(core.value(), 1)", "self.assertEqual(core.value(), 3)")
+        res = self.run_fs([B + "test_pass"], changes={"tests/test_basic.py": source})
+        self.assertEqual(res["outcomes"][B + "test_pass"], "failed")
+
+    def test_spawn_worker_sees_patched_code(self):
+        tid = F + "test_pool_value"
+        res = self.run_fs([tid], changes=PATCH_CORE)
+        self.assertEqual(res["lines"][tid]["outcome"], "failed", res["lines"][tid])
+        self.assertIn("2 != 1", res["lines"][tid]["detail"])
+        # The same edit through the in-memory overlay: the worker imports the unpatched file
+        # and the test passes, which is why such a pass is flagged "spawn" there.
+        res = self.repo.run("unittest", [tid], patched=self.repo.patched("pkg/core.py", PATCH_CORE["pkg/core.py"]))
+        self.assertEqual(res["lines"][tid]["outcome"], "passed")
+        self.assertIn("spawn", res["lines"][tid]["flags"])
+        self.assertEqual(res["outcomes"][tid], "flagged")
+
+    def test_reading_patched_file_is_faithful(self):
+        # memory mode flags read_patched; on disk the patched bytes are what a test reads.
+        tid = B + "test_read_source"
+        res = self.run_fs([tid], changes=COMMENT_CORE)
+        self.assertEqual(res["outcomes"][tid], "passed", res["lines"][tid])
+
+    def test_shadowed_read_is_unsafe(self):
+        ids = [F + "test_read_real_path", F + "test_plain"]
+        res = self.run_fs(ids, changes=COMMENT_CORE)
+        self.assertEqual(res["lines"][ids[0]]["outcome"], "passed")
+        self.assertIn("read_shadowed", res["lines"][ids[0]]["flags"])
+        self.assertEqual(res["outcomes"][ids[0]], "flagged")
+        self.assertEqual(res["outcomes"][ids[1]], "flagged")  # sticky: later tests too
+
+    def test_shadowed_read_in_worker_is_unsafe(self):
+        tid = F + "test_worker_reads_real_path"
+        res = self.run_fs([tid])
+        self.assertEqual(res["outcomes"][tid], "passed")
+        res = self.run_fs([tid], changes=COMMENT_CORE)
+        self.assertEqual(res["lines"][tid]["outcome"], "passed")
+        self.assertIn("read_shadowed", res["lines"][tid]["flags"])
+        self.assertEqual(res["outcomes"][tid], "flagged")
+
+    def test_raw_subprocess_still_unsafe(self):
+        tid = F + "test_subprocess"
+        res = self.run_fs([tid, F + "test_plain"])
+        self.assertIn("spawn", res["lines"][tid]["flags"])
+        self.assertEqual(res["outcomes"][tid], "flagged")
+        self.assertEqual(res["outcomes"][F + "test_plain"], "flagged")
+
+    def test_worker_crash_is_not_a_pass(self):
+        tid = F + "test_pool_crash"
+        res = self.run_fs([tid])
+        self.assertEqual(res["lines"][tid]["outcome"], "failed")
+        self.assertIn("BrokenProcessPool", res["lines"][tid]["detail"])
+
+    def test_timeout_with_live_workers_kills_them(self):
+        base = os.path.join(ROOT, "work")
+        where = tempfile.mkdtemp(prefix="m0-pids-", dir=base)
+        try:
+            tid = F + "test_pool_hang"
+            t0 = time.monotonic()
+            res = self.run_fs([tid, F + "test_plain"], cap=4.0, env=dict(os.environ, M0_PIDS=where))
+            self.assertLess(time.monotonic() - t0, 30)
+            self.assertEqual(res["returncode"], m0.EXIT_TIMEOUT, res["lines"])
+            self.assertEqual(res["lines"][tid]["outcome"], "timeout")
+            self.assertNotIn("passed", res["outcomes"].values())
+            pids = [int(n) for n in os.listdir(where)]
+            self.assertEqual(len(pids), 2)
+            deadline = time.monotonic() + 5
+            while any(_alive(p) for p in pids) and time.monotonic() < deadline:
+                time.sleep(0.05)
+            self.assertFalse([p for p in pids if _alive(p)])
+        finally:
+            shutil.rmtree(where, ignore_errors=True)
+
+    def test_children_cpu_is_counted(self):
+        tid = F + "test_pool_left_running"
+        res = self.run_fs([tid])
+        self.assertEqual(res["outcomes"][tid], "passed", res["lines"][tid])
+        self.assertGreater(res["cpu"], 0.55)  # the worker's 0.6 s, reaped by the runner
+
+    def test_cpu_count_cap(self):
+        tid = F + "test_cpu_count"
+        for n in (1, 2):
+            res = self.run_fs([tid], cpu_count=n, env=dict(os.environ, M0_CPUS=str(n)))
+            self.assertEqual(res["outcomes"][tid], "passed", res["lines"][tid])
+            self.assertEqual(res["done"]["mp_children"], n)
+
+    def test_fork_child(self):
+        tid = F + "test_fork_value"
+        res = self.run_fs([tid])
+        self.assertEqual(res["outcomes"][tid], "passed", res["lines"][tid])
+        self.assertIn("mp_fork", res["lines"][tid]["flags"])
+        res = self.run_fs([tid], changes=PATCH_CORE)
+        self.assertEqual(res["lines"][tid]["outcome"], "failed")
+        tid = F + "test_fork_reads_real_path"
+        res = self.run_fs([tid], changes=COMMENT_CORE)
+        self.assertIn("read_shadowed", res["lines"][tid]["flags"])
+        self.assertEqual(res["outcomes"][tid], "flagged")
+
+    def test_forkserver_is_unsafe(self):
+        tid = F + "test_forkserver"
+        res = self.run_fs([tid])
+        self.assertIn("spawn", res["lines"][tid]["flags"])
+        self.assertNotEqual(res["outcomes"][tid], "passed")
+
+    def test_no_bytecode_written(self):
+        self.run_fs([F + "test_pool_value"], changes=PATCH_CORE)
+        written = [os.path.join(r, n) for r, _, names in os.walk(self.repo.root) for n in names
+                   if n.endswith(".pyc")]
+        self.assertEqual(written, [])
+
+    def test_bad_fs_specs(self):
+        root = self.repo.root
+        for extra in ({"overlay": "disk"}, {"overlay": "fs", "shadowed": "x"},
+                      {"overlay": "fs", "shadowed": ["rel/path"]},
+                      {"overlay": "fs", "shadowed": [], "patched": self.repo.patched("pkg/core.py", "")}):
+            spec = {"kind": "mode0", "src": root, "patched": {}, "engine": "unittest", "site": [],
+                    "tests": [{"id": B + "test_pass", "cap": 5.0}], **extra}
+            res = m0.execute(spec, 30, python=PYTHON, workdir=self.repo.work)
+            self.assertEqual(res["returncode"], m0.EXIT_BADSPEC, extra)
+
+    def test_memory_mode_explicit(self):
+        res = self.repo.run("unittest", [B + "test_pass"])
+        self.assertNotIn("overlay", res["done"])
+        spec = {"kind": "mode0", "overlay": "memory", "src": self.repo.root, "patched": {},
+                "engine": "unittest", "site": [], "tests": [{"id": B + "test_pass", "cap": 5.0}]}
+        res = m0.execute(spec, 30, python=PYTHON, workdir=self.repo.work)
+        self.assertEqual(res["outcomes"][B + "test_pass"], "passed")
+        self.assertNotIn("overlay", res["done"])
+
+    @unittest.skipIf(PYTEST_SITE is None, "pytest not found (set BR_MODE0_PYTHON and BR_MODE0_SITE)")
+    def test_pytest_engine(self):
+        ids = [F + "test_pool_value", B + "test_pass"]
+        res = self.run_fs(ids, engine="pytest")
+        self.assertEqual(set(res["outcomes"].values()), {"passed"}, res["lines"])
+        res = self.run_fs(ids, engine="pytest", changes=PATCH_CORE)
+        self.assertEqual({res["lines"][i]["outcome"] for i in ids}, {"failed"}, res["lines"])
+
+
 class TestParseResults(unittest.TestCase):
     def setUp(self):
         os.makedirs(os.path.join(ROOT, "work"), exist_ok=True)
@@ -593,6 +897,10 @@ class TestParentSide(unittest.TestCase):
                                    env={"PYTHONPATH": "/evil", "PYTHONHASHSEED": "7", "HOME": "/h"})
         self.assertEqual(argv, ["/py", "-s", "-P", "-S", "-B", m0.REPLICA_RUNNER, "/x/spec.json"])
         self.assertEqual(env, {"PYTHONHASHSEED": "1", "HOME": "/h"})
+        argv, _ = m0.launch_argv("/x/spec.json", python="/py", cpu_count=2)
+        self.assertEqual(argv, ["/py", "-I", "-S", "-B", "-X", "cpu_count=2", m0.REPLICA_RUNNER, "/x/spec.json"])
+        argv, _ = m0.launch_argv("/x/spec.json", "/py", 1, {}, 3)
+        self.assertEqual(argv, ["/py", "-s", "-P", "-S", "-B", "-X", "cpu_count=3", m0.REPLICA_RUNNER, "/x/spec.json"])
 
     def test_digests(self):
         self.assertEqual(len(m0.runner_digest()), 64)
