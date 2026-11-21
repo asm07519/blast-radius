@@ -234,7 +234,7 @@ def main():
     typeprof_incomplete = base["typeprof_incomplete"] if base is not None else None
     if args.typeprof:
         tp = json.load(open(args.typeprof))
-        typeprof = {site: tuple(tuple(r) for r in rows) for site, rows in tp["sites"].items()}
+        typeprof = {site: tuple(tuple(r) for r in rows) for site, rows in sorted(tp["sites"].items())}
         typeprof_incomplete = 0
         for tid in tp["incomplete"]:
             if tid in index:
@@ -251,15 +251,17 @@ def main():
             print(f"skip subtests of {st['test']}: it did not pass", file=sys.stderr)
             continue
         value_of = lambda params: next(iter(params.values())) if params else ""
-        subtests[st["test"]] = {"outside": st["outside"],
-                                "windows": [[value_of(p), files] for p, files in st["windows"]]}
+        subtests[st["test"]] = {"outside": dict(sorted(st["outside"].items())),
+                                "windows": [[value_of(p), dict(sorted(files.items()))] for p, files in st["windows"]]}
 
     exec_phases = dict(base["exec_phases"]) if base is not None else {}
     if args.exec_phases:
         for name, info in json.load(open(args.exec_phases)).items():
             exec_phases[info["test"]] = {"suite": info["suite"], "fingerprint": info["fingerprint"],
-                                         "exposed": info["exposed"]}
+                                         "exposed": dict(sorted(info["exposed"].items()))}
 
+    # Tables read from the JSON inputs are sorted by key: their order there can depend on
+    # file-listing and set-iteration order, which must not change the bytes of the maps.
     data = {
         "format": FORMAT,
         "exec_phases": exec_phases,
