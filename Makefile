@@ -46,9 +46,10 @@ maps: tools
 	 && python tools/build_typeprof.py --repo /src/sqlglot --tests maps/tests.json --out /work/typeprof.json -j $(JOBS) \
 	 && python tools/subtest_cov.py --repo /src/sqlglot \
 		--test tests/test_generator.py::TestGenerator::test_generator_memory --out /work/subtests_genmem.json \
+	 && python tools/exec_phases.py --repo /src/sqlglot --out /work/exec_phases.json \
 	 && python tools/compact_maps.py --tests maps/tests.json --raw /work/maps/raw --out maps/maps.bin \
 		--static /work/static.json --classes /work/classes.json --typeprof /work/typeprof.json \
-		--subtests /work/subtests_genmem.json"
+		--subtests /work/subtests_genmem.json --exec-phases /work/exec_phases.json"
 
 # Label the sample with our own runner (must reproduce sample/answers.json).
 truth-sample: tools

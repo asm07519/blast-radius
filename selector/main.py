@@ -35,7 +35,33 @@ def bits_to_numbers(bits, translate):
     return out
 
 
+def prune_executor_tests(cid, selected, res, maps, by_id, ms, src_root):
+    """Drop executor tests whose expensive phase cannot see the change, if the cheap phase
+    produces the same fingerprints on the patched code."""
+    if res.import_files:
+        return selected
+    candidates = []
+    for test_id, info in maps.exec_phases.items():
+        num = by_id.get(test_id)
+        if num is None or num not in selected:
+            continue
+        if replica.exec_eligible(info, res.call_sites):
+            candidates.append((num, info))
+    if not candidates:
+        return selected
+    rest = selected - {num for num, _ in candidates}
+    saving = schedule.cost(schedule.split(selected, ms), ms) - schedule.cost(schedule.split(rest, ms), ms)
+    if saving < 4000:
+        return selected
+    if replica.run_exec([info for _, info in candidates], res.patched, src_root):
+        log(f"{cid}: executor fingerprints unchanged; dropped {len(candidates)} executor test(s)")
+        return rest
+    log(f"{cid}: executor fingerprints changed; kept")
+    return selected
+
+
 def prune_with_replicas(cid, selected, res, maps, by_id, ms, src_root):
+    selected = prune_executor_tests(cid, selected, res, maps, by_id, ms, src_root)
     for test_id in replica.REPLICAS:
         num = by_id.get(test_id)
         info = maps.subtests.get(test_id)
@@ -61,7 +87,10 @@ def main(argv=None):
     data = Path(os.environ.get("BR_DATA", "/data"))
     maps_path = Path(os.environ.get("BR_MAPS", APP / "maps" / "maps.bin"))
     src_root = os.environ.get("BR_SRC", str(APP / "src"))
-    budget = float(os.environ.get("BR_BUDGET", "100"))
+    # Hard budget: past it, remaining commits select every test (the run must finish
+    # well inside the scorer's 3-minute limit). Replicas stop earlier, at the soft budget.
+    budget = float(os.environ.get("BR_BUDGET", "140"))
+    replica_budget = float(os.environ.get("BR_REPLICA_BUDGET", "80"))
     verbose = os.environ.get("BR_VERBOSE", "1") == "1"
 
     tests = json.loads((data / "tests.json").read_text())["tests"]
@@ -107,7 +136,8 @@ def main(argv=None):
             selected = set(bits_to_numbers(res.bits, translate))
             if res.nontrivial:
                 selected.update(unmapped)
-            if res.replica_ok and (res.call_sites or res.import_files) and os.environ.get("BR_NO_REPLICA") != "1":
+            if res.replica_ok and (res.call_sites or res.import_files) and os.environ.get("BR_NO_REPLICA") != "1" \
+                    and time.monotonic() - started < replica_budget:
                 selected = prune_with_replicas(cid, selected, res, maps, by_id, ms, src_root)
             answers[cid] = sorted(selected)
             if verbose:

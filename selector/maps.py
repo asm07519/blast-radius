@@ -27,6 +27,12 @@ class Maps:
         self.class_info = data.get("class_info", {})
         self.has_class_data = bool(self._class_users) and bool(self.class_info) and bool(self.names)
         self.typeprof = data.get("typeprof", {})
+        self.exec_phases = {}
+        for test_id, info in data.get("exec_phases", {}).items():
+            self.exec_phases[test_id] = {
+                "suite": info["suite"], "fingerprint": info["fingerprint"],
+                "exposed": {f: frozenset(v) for f, v in info["exposed"].items()},
+            }
         self.subtests = {}
         for test_id, info in data.get("subtests", {}).items():
             self.subtests[test_id] = {

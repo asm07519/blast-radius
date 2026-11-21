@@ -61,7 +61,7 @@ def module_name(path):
     return name[: -len(".__init__")] if name.endswith(".__init__") else name
 
 
-def run(test_id, values, patched_files, src_root, timeout=20.0):
+def run(test_id, values, patched_files, src_root, timeout=8.0):
     """True if the restricted test passes on the patched code."""
     cfg = REPLICAS[test_id]
     spec = {
@@ -79,6 +79,43 @@ def run(test_id, values, patched_files, src_root, timeout=20.0):
             json.dump(spec, fh)
         proc = subprocess.run([sys.executable, "-I", "-S", os.path.join(HERE, "replica_runner.py"), path],
                               capture_output=True, timeout=timeout)
+        out = proc.stdout.decode(errors="replace").strip().splitlines()
+        return proc.returncode == 0 and bool(out) and out[-1] == "PASS"
+    except Exception:
+        return False
+    finally:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
+def exec_eligible(info, call_sites):
+    """True when no changed line runs in the exposed phases of an executor test."""
+    exposed = info["exposed"]
+    for path, lines in call_sites:
+        e = exposed.get(path)
+        if e and any(line in e for line in lines):
+            return False
+    return True
+
+
+def run_exec(infos, patched_files, src_root, timeout=12.0):
+    """True if the cheap-phase fingerprints of these executor tests are unchanged on the patched code."""
+    spec = {
+        "kind": "exec_fp",
+        "src": src_root,
+        "patched": {module_name(p): [os.path.join(src_root, p), base64.b64encode(src).decode()]
+                    for p, src in patched_files.items()},
+        "suites": [[info["suite"], info["fingerprint"]] for info in infos],
+    }
+    fd, path = tempfile.mkstemp(prefix="br-replica-", suffix=".json")
+    try:
+        with os.fdopen(fd, "w") as fh:
+            json.dump(spec, fh)
+        env = dict(os.environ, PYTHONHASHSEED="0")
+        proc = subprocess.run([sys.executable, "-I", "-S", os.path.join(HERE, "replica_runner.py"), path],
+                              capture_output=True, timeout=timeout, env=env)
         out = proc.stdout.decode(errors="replace").strip().splitlines()
         return proc.returncode == 0 and bool(out) and out[-1] == "PASS"
     except Exception:

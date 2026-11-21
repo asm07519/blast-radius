@@ -68,6 +68,7 @@ def expand(data):
         "typeprof": data.get("typeprof", {}),
         "typeprof_incomplete": data.get("typeprof_incomplete", None),
         "subtests": data.get("subtests", {}),
+        "exec_phases": data.get("exec_phases", {}),
         "sets": sets,
     }
 
@@ -83,6 +84,7 @@ def main():
     ap.add_argument("--classes", default=None, help="tools/class_info.py output")
     ap.add_argument("--typeprof", default=None, help="tools/build_typeprof.py output")
     ap.add_argument("--subtests", action="append", default=[], help="tools/subtest_cov.py output(s)")
+    ap.add_argument("--exec-phases", default=None, help="tools/exec_phases.py output")
     args = ap.parse_args()
 
     tests = json.load(open(args.tests))
@@ -252,8 +254,15 @@ def main():
         subtests[st["test"]] = {"outside": st["outside"],
                                 "windows": [[value_of(p), files] for p, files in st["windows"]]}
 
+    exec_phases = dict(base["exec_phases"]) if base is not None else {}
+    if args.exec_phases:
+        for name, info in json.load(open(args.exec_phases)).items():
+            exec_phases[info["test"]] = {"suite": info["suite"], "fingerprint": info["fingerprint"],
+                                         "exposed": info["exposed"]}
+
     data = {
         "format": FORMAT,
+        "exec_phases": exec_phases,
         "subtests": subtests,
         "typeprof": typeprof,
         "typeprof_incomplete": typeprof_incomplete,

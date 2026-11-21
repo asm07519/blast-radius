@@ -44,6 +44,19 @@ def main():
     os.chdir(spec["src"])
     os.environ.setdefault("SKIP_INTEGRATION", "0")
 
+    if spec.get("kind") == "exec_fp":
+        sys.path.insert(1, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from selector.exec_fingerprint import fingerprint_suite
+
+        for suite, expected in spec["suites"]:
+            fp, _, _ = fingerprint_suite(spec["src"], suite)
+            if fp != expected:
+                diff = [i for i, (a, b) in enumerate(zip(fp["queries"], expected["queries"])) if a != b]
+                print(f"FAIL {suite['fixture']} queries {diff[:5]}")
+                return
+        print("PASS")
+        return
+
     mod = importlib.import_module(spec["module"])
     restrict = spec["restrict"]
     if restrict["kind"] == "dialects":

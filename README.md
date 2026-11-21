@@ -7,7 +7,7 @@ changed code or data, and split them over workers to minimise
 
 ## How it works
 
-**Maps, built once from the pinned commit** (`maps/maps.bin`, ~0.6 MB):
+**Maps, built once from the pinned commit** (`maps/maps.bin`, ~0.7 MB):
 
 * Every test runs **alone in a fresh traced interpreter**. Shared caches (`lru_cache`,
   built-once tries) can never hide a dependency of one test behind another.
@@ -27,6 +27,9 @@ changed code or data, and split them over workers to minimise
   `is` / `is not` / `==` / `!=` comparison in sqlglot over the whole suite. An import
   hook rewrites each comparison to record `(type(a), type(b))` and return the same result.
 * **Per-subtest coverage** of `test_generator_memory`, one window per dialect.
+* **Executor phases** of `test_execute_tpch` / `test_execute_tpcds`: per-query
+  fingerprints of the cheap phase, and the lines run by the exposed phases, each traced
+  in a fresh process started from pickled inputs (`tools/exec_phases.py`).
 
 **Per patch, at run time** (stdlib only, ~10 ms per commit):
 
@@ -64,7 +67,15 @@ changed code or data, and split them over workers to minimise
    call-time lines inside those windows, or a module first loaded inside the loop
    (then that window and every later one). The selector reruns exactly those
    subtests on the patched code, in ~0.2–1 s, and drops the test if they pass.
-7. Schedule: longest-first packing for k = 1..8 with local improvement. Pick the k
+7. **Executor fingerprints.** The TPC-H/TPC-DS executor tests split into a cheap phase
+   (parse, pickle round trip, `find_tables`, `ensure_schema`, `optimize`, render,
+   `transpile` to duckdb) and an exposed one (module import and data loading,
+   planning, execution, reading result rows). If no changed line runs in the exposed
+   phase, the cheap phase is rerun on the patched code and hashed per query. Equal
+   hashes mean the exposed phase gets the same inputs and runs unchanged code, so the
+   outcome cannot change and the test is dropped. Not tried for import-time changes;
+   costs ~3–4 s CPU, so it is tried only when dropping the tests saves > 4 s.
+8. Schedule: longest-first packing for k = 1..8 with local improvement. Pick the k
    with the lowest `max load + 2 s·k`, in whole milliseconds like the scorer.
 
 Every commit is wrapped in try/except, so an error or a time budget overrun selects
@@ -74,8 +85,8 @@ every test for that commit and never rejects the run.
 
 | maps | simulated | misses | selector CPU |
 | --- | --- | --- | --- |
-| committed (built without duckdb/pytz: 37 tests untrusted and added to every non-trivial commit) | ~680 s | 0 | ~0.3 s |
-| all tests trusted (what full maps give, via `make maps` or the build-time retrace) | 120.8 s | 0 | ~1 s |
+| committed (built without duckdb/pytz: 37 tests untrusted and added to every non-trivial commit) | 565.8 s | 0 | ~40 s (9 executor fingerprint runs) |
+| all tests trusted (what full maps give, via `make maps` or the build-time retrace) | 120.8 s | 0 | ~5 s |
 
 The first submission (before the type profile, the tighter statement rule and the
 replica) scored 237.7 s on the practice set with 0 misses; on this sample it was at 182.5 s.
@@ -113,11 +124,14 @@ selector/          run-time code (stdlib only)
   impact.py        sites and paths -> tests; class-literal narrowing
   maps.py          map loader and bitset queries
   schedule.py      worker split
+  replica.py       subtest and executor-fingerprint replicas (run replica_runner.py)
+  exec_fingerprint.py  cheap-phase fingerprints of the executor tests
 tools/             offline tooling (never run at scoring time)
   trace/           tracer, sitecustomize hook, pytest plugin
   build_maps.py    run each test alone under the tracer
   static_index.py  name reads and computed attribute reads in the pinned sources
   class_info.py    MRO and trackability of every sqlglot class
+  exec_phases.py   executor tests: cheap-phase fingerprints, lines of the exposed phases
   compact_maps.py  fold traces (+ static data) into maps/maps.bin; merge mode
   finish_maps.py   image-build step: retrace untrusted tests when packages exist
   ground_truth.py  label patches like the organisers (full suite or complement only)
