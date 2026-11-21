@@ -10,7 +10,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import replica, schedule
+from . import mode0, replica, schedule
 from .impact import Everything, commit_impact, refine_class_literal
 from .maps import Maps
 from .patch import parse
@@ -116,6 +116,12 @@ def main(argv=None):
     except Exception as error:
         log(f"maps unavailable ({error!r}); selecting every test")
         maps = None
+    session = None  # Mode 0 (BR_MODE0=1, default off): see selector/mode0.py
+    if maps is not None:
+        try:
+            session = mode0.from_env(tests, src_root, started, replica_budget, budget, log)
+        except Exception as error:
+            log(f"mode0 off: {error!r}")
 
     for path in patches:
         cid = path.stem
@@ -139,6 +145,7 @@ def main(argv=None):
             if res.replica_ok and (res.call_sites or res.import_files) and os.environ.get("BR_NO_REPLICA") != "1" \
                     and time.monotonic() - started < replica_budget:
                 selected = prune_with_replicas(cid, selected, res, maps, by_id, ms, src_root)
+            selected = replica.mode0_verify(session, cid, selected, res, fps, ms)
             answers[cid] = sorted(selected)
             if verbose:
                 log(f"{cid}: {len(selected)} tests; " + " | ".join(res.notes[:6]))
