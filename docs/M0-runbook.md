@@ -29,9 +29,18 @@ python3 tools/map_stats.py maps/maps.bin --check && echo FULLY-TRACED
 make validate SRC=/path/to/pinned/sqlglot          # host-side, no Docker
 ```
 
-Measured step times (`[maps] <step> done in Ns` lines): trace 3240 runs ≈ 29 min total at 6-8
-jobs (≈0.5 s/run once the slow tests are done; test_max_nodes ≈ 50-130 s per seed), static 7 s,
-classes 1 s, typeprof 122 s, subtests 3 s, exec_phases 37 s, compact 61 s, manifest 1 s.
+Measured, clean second build with JOBS=6: 21:38 total — trace 1162 s (3240 runs, 0.37 s/run;
+test_max_nodes ≈ 50-130 s per seed), static 3 s, classes 1 s, typeprof 75 s, subtests 1 s,
+exec_phases 22 s, compact 31 s, manifest 0 s. (First build, busier host: trace ≈ 29 min,
+typeprof 122 s, exec_phases 37 s, compact 61 s.)
+
+Determinism (two independent builds): every per-test call/import/reads/listed/classes record is
+identical; maps differ only in `call_at_import` (+ `names`, which embeds it). Those entries come
+from multiprocessing tests (executor, a few optimizer tests): the tracer's "an import is running"
+flag is per process, not per thread, so a pool thread running sqlglot code while the main thread
+imports is recorded at random. The extra entries only make class-literal narrowing more
+conservative. `nproc` (trace shards per test) also varies for the executor tests.
+`make validate`'s section checksums show exactly this.
 Expected end of the log:
 
 ```
@@ -79,12 +88,16 @@ Measured (emulated, busy host):
 
 | image / maps | flags | simulated | CPU s | total | misses | run wall |
 | --- | --- | --- | --- | --- | --- | --- |
-| committed maps before M0 (37 untrusted, repair failed) | | 565.751 | 45.4 | 611.2 | 0 | 45 s |
-| fully traced maps, 3 runs | | 118.628 | 7.27 / 7.36 / 7.28 | **125.904** middle | 0 | 6.7-6.9 s |
-| fully traced maps, 3 runs | `BR_LITERAL_GUARD=1 BR_LITERAL_PROBE=1` | 118.628 | 9.70 / 9.70 / 9.53 | 128.333 middle | 0 | 9.1-9.3 s |
+| committed maps before M0 (37 untrusted, repair failed), load ~25 | | 565.751 | 45.4 | 611.2 | 0 | 45 s |
+| fully traced maps, 3 runs, load ~25 | | 118.628 | 7.27 / 7.36 / 7.28 | 125.904 middle | 0 | 6.7-6.9 s |
+| same, `BR_LITERAL_GUARD=1 BR_LITERAL_PROBE=1`, load ~25 | flags | 118.628 | 9.70 / 9.70 / 9.53 | 128.333 middle | 0 | 9.1-9.3 s |
+| fully traced maps, 3 runs, load ~10 | | 118.628 | 3.48 / 3.50 / 3.51 | **122.129** middle | 0 | 3.2 s |
+| same, `BR_LITERAL_GUARD=1 BR_LITERAL_PROBE=1`, load ~10 | flags | 118.628 | 4.68 / 4.72 / 4.70 | 123.327 middle | 0 | 4.5 s |
+| old maps repaired at build time by the fixed fallback, load ~10 | | 120.779 | 3.51 | 124.29 | 0 | 3.2 s |
 
-Emulated CPU includes Rosetta translation (system time ≈ 40% of a busy loop): treat it as an
-upper bound. The selector's own `[br] done: ... 0.78s cpu` excludes its replica children.
+CPU depends strongly on host load (2× between the two sessions above) and includes Rosetta
+translation (system time ≈ 40% of a busy loop): treat it as an upper bound. The probe flags
+cost 3 import probes (4d63, 535z, ktz3), ≈0.4-0.8 s each here. The selector's own `[br] done: ... 0.78s cpu` excludes its replica children.
 Grep `work/sample.stderr` for `replica did not pass; kept` / `executor fingerprints changed; kept`
 if simulated is above 118.6 s with trusted maps.
 
@@ -93,11 +106,15 @@ with the old maps it did not work here: `37 untrusted tests` → `budget reached
 finished` → `retraced 18 tests in 221s` → `static_index.py timed out; keeping maps` (the image kept
 37 untrusted; build 5:48). Causes, now fixed: 18 parallel jobs OOM-killed the traced tests (rc -9,
 counted untrusted), and the budget timeout left their pytest processes running. The server builds
-natively on 4 cores, so it was likely unaffected (PRD §1). With complete maps the step is a no-op.
+natively on 4 cores, so it was likely unaffected (PRD §1). With the fix, the old maps repaired
+fully here: `retracing with 7 jobs, 185s left` → `retraced 37 tests in 79s` → `37 tests traced,
+1620 mapped, 0 untrusted` → `merged in 85s` (120.779 s simulated: the repair keeps the stub-built
+type profile). With complete maps the step is a no-op.
 
-`make truth-sample JOBS=6` (labeller in the tools image, must end `30 commits agree, 0 differ`;
-exits 0 either way): see the result recorded in the M0 report. Lost/timed-out chunks show as
-`ours only [...]`; raise the per-test timeout with `TRUTH_FLAGS="--test-timeout 600"`.
+`make truth-sample JOBS=6` (labeller in the tools image; exits 0 either way): verified
+`30 commits agree, 0 differ` in 47 min with the default 120 s per-test timeout (peak 5.7 GiB).
+Lost/timed-out chunks would show as `ours only [...]`; then raise the timeout with
+`TRUTH_FLAGS="--test-timeout 600"`.
 
 ## d. Practice submission record (owner submits)
 
@@ -131,5 +148,10 @@ Write the measured r, F and gate back into PRD §8 in place of the estimates.
 * Resume: `build_maps.py` skips every test with a raw file, including failed ones.
 * `JOBS` defaults to the VM's CPU count (18 here): too many for 8 GB. Pass `JOBS=6`.
 * `make sample-cpu` depends on `build`: editing anything under `tools/` reruns the repair step.
+* Docker Desktop's file sharing on macOS left conflict copies when a container replaced a file
+  the host had just deleted or renamed: `maps/maps 2.bin` (the old maps) and
+  `work/maps/raw/1490.s1 2.json` (a killed run, which compact_maps.py would read as a record of
+  test 1490 and mark it untrusted). After `make maps`, check `git status` and
+  `ls work/maps/raw | grep -v '^[0-9]*\.s[0-9]*\.json$'`; delete such files.
 * The labeller and the type profile run the suite in `JOBS` contiguous chunks: their results
   can depend on `JOBS` (state carried between tests inside a chunk).
