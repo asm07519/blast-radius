@@ -6,8 +6,11 @@ every test, which costs ~37 s instead of a 300 s miss.
 """
 
 import configparser
+import contextlib
+import contextvars
 import os
 import posixpath
+import sys
 
 from . import pyast
 from .patch import PatchError, apply
@@ -42,6 +45,8 @@ class Result:
         # Why an import probe of res.patched would not be faithful to the patched tree.
         self.probe_blockers = []
         self.probe_calls = 0
+        # BR_LITERAL_PROBE: why literal sites were refused narrowing (impact.probe_exclusion).
+        self.exclusions = []
 
     def add(self, bits, note=None):
         self.bits |= bits
@@ -78,18 +83,38 @@ def normal_path(path):
     return all(part not in ("", ".", "..") for part in path.split("/"))
 
 
+# Source root of the commit being analysed, for probe_exclusion's subclass check (the import
+# refiner's signature has no room for it). Set by commit_impact; tests may use source_root().
+_SOURCE_ROOT = contextvars.ContextVar("br_source_root", default=None)
+
+
+@contextlib.contextmanager
+def source_root(path):
+    token = _SOURCE_ROOT.set(path)
+    try:
+        yield
+    finally:
+        _SOURCE_ROOT.reset(token)
+
+
 def commit_impact(file_patches, src_root, maps, import_refiner=None, import_probe=None):
     """Tests a patch can affect, as a Result.
 
     import_probe(patched: dict[path, bytes]) -> bool is used only with BR_LITERAL_PROBE=1: it
     must return True only after it saw a fresh interpreter import `sqlglot` and every sqlglot
     module some test imports, with all of `patched` overlaid (selector/import_probe.py). It is
-    called at most once per commit, after every file has been analysed (PRD §6 rule 4).
+    called at most once per commit, after every file has been analysed (PRD §6 rule 4). It is
+    handed only the patched sqlglot/ modules (see _resolve_conditional).
     """
     for fp in file_patches:
         for p in (fp.old_path, fp.new_path):
             if p is not None and not normal_path(p):
                 raise Everything(f"{p!r}: path not in normal form")
+    with source_root(src_root):
+        return _commit_impact(file_patches, src_root, maps, import_refiner, import_probe)
+
+
+def _commit_impact(file_patches, src_root, maps, import_refiner, import_probe):
     res = Result()
     seen = set()
     for fp in file_patches:
@@ -117,8 +142,16 @@ def commit_impact(file_patches, src_root, maps, import_refiner=None, import_prob
             _modified(fp, old_path, src_root, maps, res, import_refiner)
     if res.nontrivial:
         res.add(maps.untrusted)
+    verdict = []
     if res.conditional:
-        _resolve_conditional(res, import_probe)
+        verdict.append(_resolve_conditional(res, import_probe))
+    # main.py logs only the first notes of a commit: the literal verdict and exclusions go first.
+    distinct = list(dict.fromkeys(res.exclusions))
+    verdict += distinct[:3]
+    if len(distinct) > 3:
+        verdict.append(f"literal narrowing excluded at {len(distinct) - 3} more site(s)")
+    if verdict:
+        res.notes[:0] = verdict
     return res
 
 
@@ -128,6 +161,16 @@ def _resolve_conditional(res, import_probe):
     One probe covers every narrowing of the commit, because it imports all patched modules
     together. No probe, a probe that raises or says anything but True, or a patch the
     in-memory overlay cannot represent: every narrowing falls back to all importers.
+
+    The probe is handed only the patched modules under sqlglot/. Python files elsewhere
+    (tests/, setup.py, sqlglotc/, benchmarks/) are never imported by the child: it imports
+    `sqlglot` and sqlglot modules only, and no module of the pinned sqlglot imports anything
+    outside the package and the standard library (audited: no `import tests`/`setup`/
+    `sqlglotc`/`benchmarks`, no relative import escaping the package; the dynamic imports in
+    serde.py, optimizer/__init__.py and dialects/ build `sqlglot.` names or names read from
+    serialized payloads at call time), and no top-level entry of the pinned tree has the name of
+    a module the child imports. Overlaying them would change nothing; leaving them out keeps the
+    child's overlay to what it imports. Returns the verdict note.
     """
     narrow = fallback = 0
     for n, f, _ in res.conditional:
@@ -143,15 +186,15 @@ def _resolve_conditional(res, import_probe):
     else:
         res.probe_calls += 1
         try:
-            ok = import_probe(dict(res.patched)) is True
+            ok = import_probe({p: src for p, src in res.patched.items() if p.startswith("sqlglot/")}) is True
         except Exception as error:  # noqa: BLE001 - an unusable probe proves nothing
             why = f"import probe failed ({error!r})"
         if not ok and why is None:
             why = "patched code did not import cleanly"
     for n, f, note in res.conditional:
         res.add(n if ok else f, note if ok else f"{note}; all importers")
-    res.notes.append(f"literal narrowing kept: patched code imports cleanly ({len(res.conditional)} site(s))"
-                     if ok else f"literal narrowing dropped: {why}")
+    return (f"literal narrowing kept: patched code imports cleanly ({len(res.conditional)} site(s))"
+            if ok else f"literal narrowing dropped: {why}")
 
 
 def _base(path):
@@ -279,8 +322,11 @@ def _modified(fp, path, src_root, maps, res, import_refiner):
         res.nontrivial = True
         return
     if not path.startswith("sqlglot/"):
+        # Not overlaid in the import probe, and no need: the probe child never imports it (see
+        # _resolve_conditional). Its own effects are selected by the sites below. (conftest.py,
+        # sitecustomize.py, usercustomize.py and top-level modules other than setup.py already
+        # select everything; added, deleted or renamed files block in _added/_deleted.)
         res.replica_ok = False
-        res.probe_blockers.append(f"{path}: Python outside sqlglot/ is not overlaid")
     elif not all(part.isidentifier() for part in _module_of(path).split(".")):
         res.probe_blockers.append(f"{path}: not an importable module name")
     res.patched[path] = new
@@ -306,6 +352,8 @@ def _modified(fp, path, src_root, maps, res, import_refiner):
             bits = None
             if import_refiner is not None:
                 bits = import_refiner(path, old, new, site, maps)
+            if probe_on and site.excluded:
+                res.exclusions.append(f"literal narrowing excluded: {path}: {site.excluded}")
             if bits is None:
                 bits = maps.imported(path)
             elif probe_on:
@@ -398,11 +446,13 @@ def probe_exclusion(site, path_keys, maps):
 
     Each of these lets code other than the class's users see the change even when the
     import succeeds:
-      * an annotated assignment, or an Assign<->AnnAssign conversion: the annotation is
-        evaluated in the class body (on 3.13 a bad name raises NameError), lands in
-        __annotations__, and is consumed by @dataclass, NamedTuple and TypedDict, whose
-        generated __init__/__new__ and defaults reach callers that never name the field (and
-        are invisible to the tracer, which only records receivers of sqlglot code);
+      * an inserted or removed annotated assignment, an Assign<->AnnAssign conversion (both
+        halves), or a changed one whose target, annotation or kind differs: the annotation is
+        evaluated in the class body (on 3.13 a bad name raises NameError), the entry appears in,
+        leaves or changes in __annotations__, and annotated names are consumed by @dataclass,
+        NamedTuple and TypedDict, whose generated __init__/__new__ and defaults reach callers
+        that never name the field (and are invisible to the tracer, which only records
+        receivers of sqlglot code);
       * a decorator (any: @dataclass, registries, @trait), class keywords (metaclass=...,
         __init_subclass__ arguments) or type parameters on any class of the path;
       * a base that is not a plain name chain (Generic[T], a call), or whose name is in the
@@ -410,12 +460,34 @@ def probe_exclusion(site, path_keys, maps):
       * an MRO (from the maps) with a class the maps do not describe (outside sqlglot) other
         than object, Exception, BaseException, abc.ABC and collections.abc: enum members,
         tuple/dict/str subclasses, typing machinery, metaclasses (type);
-      * a class the default tokenizer inherits from (see _DEFAULT_TOKENIZERS).
+      * a class the default tokenizer inherits from (see _DEFAULT_TOKENIZERS);
+      * the same facts on any SUBCLASS, in any module (subclass_exclusion): a decorator, class
+        keyword or special base of a subclass runs while that subclass is created and can read
+        the inherited value.
     Non-Name assignment targets (`D["k"] = 1` can mutate an inherited, shared dict) are already
     not literal under the flag (pyast._literal_change).
+
+    A CHANGED annotated assignment whose only difference is a literal value narrows like a plain
+    assignment (pyast.value_only_annassign: same Name target, simple, same annotation, a plain
+    type expression not reading the target; site.literal checks the values as for Assign):
+      * at class creation `X: ann = v` stores v in the class namespace exactly like `X = v`,
+        then evaluates `ann` and stores it in __annotations__["X"] (3.13: evaluated in the
+        class body; with `from __future__ import annotations` it is stored as a string; under
+        PEP 649 it is evaluated lazily from the same expression). The expression is identical
+        in old and new, reads only names other than X, and has no calls, so it evaluates to the
+        same object or fails the same way (and a failure is seen by the import probe);
+        __annotations__ is therefore identical. What remains is the value in the class
+        namespace: the case refine_class_literal already argues for plain assignments.
+      * The only consumers of annotated defaults are class-creation machinery: @dataclass
+        (decorator rule, on the path and on subclasses), NamedTuple (bases rule, tuple in the
+        MRO), TypedDict (bases rule, dict in the MRO), Enum (bases rule, enum in the MRO),
+        Protocol/Generic (bases rule, typing in the MRO). The pinned tree (sqlglot/, tests/,
+        sqlglotc/) has no other reader of annotations: no __annotations__, get_type_hints,
+        inspect.get_annotations, annotationlib, dataclasses.fields or __dataclass_fields__
+        (audited at eb11aec4; `_fields` in expressions/core.py is a namedtuple *instance*'s).
     """
-    if site.annotated:
-        return "annotated assignment"
+    if site.annotated and not site.value_only:
+        return "annotated assignment (inserted, removed, converted, or not only its value changed)"
     heads = site.class_heads
     if heads is None or len(heads) != len(site.class_path):
         return "class header unknown"
@@ -439,6 +511,155 @@ def probe_exclusion(site, path_keys, maps):
         for d in _DEFAULT_TOKENIZERS:
             if d in maps.class_info and k in maps.class_info[d][1]:
                 return f"{k} feeds the default tokenizer of every dialect"
+    return subclass_exclusion(path_keys, maps, _SOURCE_ROOT.get())
+
+
+# --- BR_LITERAL_PROBE: decorators, keywords and special bases of subclasses ----------------
+#
+# Class decorators that may run on a subclass of a narrowed class, by resolved name and whether
+# the decorator is a call. Each returns its argument unchanged and reads none of its attributes
+# (read at eb11aec4 and in the 3.13 environment):
+#   * sqlglot.helper.trait: `from mypy_extensions import ... trait` (mypy_extensions 1.2.0:
+#     `def trait(cls): return cls`), or, without mypy_extensions (the probe's -S child), the
+#     fallback `def trait(f): return f` in helper.py;
+#   * sqlglot.helper.mypyc_attr(...): mypy_extensions returns `lambda x: x`, the fallback
+#     returns `lambda f: f`; the arguments are evaluated like any module-level code (their
+#     name reads are in the static index);
+#   * unittest.skip/skipIf/skipUnless(...): on a class, set __unittest_skip__ and
+#     __unittest_skip_why__ (or return it unchanged) and return it.
+# A patch to helper.py's fallback bodies is a call-time change selecting every test that ran
+# them, which includes every test that created a class decorated with it.
+_IDENTITY_CLASS_DECORATORS = {("sqlglot.helper.trait", False), ("sqlglot.helper.mypyc_attr", True),
+                              ("unittest.skip", True), ("unittest.skipIf", True), ("unittest.skipUnless", True)}
+_STDLIB = frozenset(getattr(sys, "stdlib_module_names", ())) | {"builtins"}
+
+_module_facts = {}  # (source root, path) -> {qualname: [ClassFacts]}, plus None: [all ClassFacts]
+_foreign = {}  # source root -> (maps, offender description or None)
+
+
+def _head_problem(facts):
+    """Why this class statement can consume inherited class attributes while it is created."""
+    for text, resolved, call in facts.decorators:
+        if (resolved, call) not in _IDENTITY_CLASS_DECORATORS:
+            return f"decorated with @{text}"
+    if facts.keywords or facts.type_params:
+        return "has class keywords or type parameters"
+    for dotted, resolved in facts.bases:
+        if dotted is None:
+            return "has a base that is not a plain name"
+        if dotted.rsplit(".", 1)[-1] in _SPECIAL_BASES or (resolved or "").rsplit(".", 1)[-1] in _SPECIAL_BASES:
+            return f"derives from {dotted}"
+    return None
+
+
+def _facts_of(src_root, path):
+    """{qualname: [ClassFacts]} (None: every class statement) of a pinned module, or None."""
+    key = (src_root, path)
+    if key not in _module_facts:
+        src = read_src(src_root, path)
+        module = _module_of(path)
+        found = None if src is None else pyast.module_class_facts(src, module, path.endswith("/__init__.py"))
+        if found is not None:
+            index = {None: found}
+            for f in found:
+                if f.qualname is not None:
+                    index.setdefault(f.qualname, []).append(f)
+            found = index
+        _module_facts[key] = found
+    return _module_facts[key]
+
+
+def _module_index(module, src_root):
+    """_facts_of for the source file of a dotted module name (module or package), or None."""
+    base = module.replace(".", "/")
+    for candidate in (base + ".py", base + "/__init__.py"):
+        index = _facts_of(src_root, candidate)
+        if index is not None:
+            return index
+    return None
+
+
+def _foreign_offender(maps, src_root):
+    """A class statement the maps do not describe (any class in tests/, a class created inside a
+    function) that has a decorator, keyword or base that can read inherited attributes while it
+    is created and whose bases are not all standard-library or builtin names (so it may derive
+    from a narrowed class), in any module some test imported; None when there is none.
+    Computed once per source root (pinned facts)."""
+    hit = _foreign.get(src_root)
+    if hit is not None and hit[0] is maps:
+        return hit[1]
+    found = None
+    for path in maps.files:
+        if not path.endswith(".py") or not maps.imported(path):
+            continue
+        src = read_src(src_root, path)
+        if src is None:
+            found = f"{path} cannot be read"
+            break
+        module = _module_of(path)
+        # Parse only modules where the bytes show a class statement that may matter: one at
+        # column 0 named once and described by the maps is not foreign (its MRO is known).
+        if all(top and name is not None and f"{module}:{name}" in maps.class_info
+               for _, name, top, _ in pyast.class_statements_to_parse(src, _SPECIAL_BASES)):
+            continue
+        index = _facts_of(src_root, path)
+        if index is None:
+            found = f"{path} cannot be parsed"
+            break
+        for f in index[None]:
+            if f.qualname is not None and f"{module}:{f.qualname}" in maps.class_info \
+                    and len(index[f.qualname]) == 1:
+                continue  # described by the maps: checked by MRO in subclass_exclusion
+            problem = _head_problem(f)
+            if problem is None:
+                continue
+            if all(r is not None and r.split(".", 1)[0] in _STDLIB for _, r in f.bases):
+                continue  # bases from the standard library only: not a subclass of a sqlglot class
+            found = f"class at {path}:{f.lineno} {problem}"
+            break
+        if found:
+            break
+    _foreign[src_root] = (maps, found)
+    return found
+
+
+def subclass_exclusion(path_keys, maps, src_root):
+    """Why a subclass of a class on the path can consume the changed value while it is created,
+    or None.
+
+    Class creation of a subclass S runs S's decorators (on S itself), passes S's class keywords
+    to __init_subclass__/the metaclass, and runs the machinery of S's other bases (Enum member
+    creation calls the mixin's __new__, NamedTuple/TypedDict/Protocol build their structures).
+    Any of these can read the inherited value and put what it derives somewhere other than S
+    (a registry, a field default seen by callers that never name S). So, for every class whose
+    MRO (maps.class_info) contains a path key, its statement in the pinned source must have no
+    decorator outside _IDENTITY_CLASS_DECORATORS, no keyword or type parameter, only plain-name
+    bases outside _SPECIAL_BASES, and its MRO no external class (as for the path itself). Classes
+    the maps do not describe (tests/, classes made in functions) are covered by
+    _foreign_offender: there is none in the pinned tree that could be a subclass.
+    Pinned sources suffice: a patch that changes a subclass's statement is a class-header site
+    of its module, which selects every importer of that module (every process that creates it).
+    """
+    family = [k for k, (_, mro) in maps.class_info.items() if k not in path_keys and any(p in mro for p in path_keys)]
+    if (family or maps.files) and src_root is None:
+        return "no source to check subclasses"
+    for k in family:
+        for b in maps.class_info[k][1]:
+            if _external_base(b, maps):
+                return f"subclass {k} derives from {b}"
+        module, qual = k.split(":", 1)
+        index = _module_index(module, src_root)
+        heads = index.get(qual) if index is not None else None
+        if not heads:
+            return f"subclass {k}: class statement not found"
+        for f in heads:
+            problem = _head_problem(f)
+            if problem is not None:
+                return f"subclass {k} {problem}"
+    if maps.files:
+        found = _foreign_offender(maps, src_root)
+        if found is not None:
+            return f"possible subclass: {found}"
     return None
 
 
@@ -507,8 +728,10 @@ def refine_class_literal(path, old, new, site, maps):
         return None  # objects of this class are invisible to the tracer
     if any(k in maps.classes_at_import for k in path_keys):
         return None  # used while modules were importing: may feed import-time state
-    if probe_on and probe_exclusion(site, path_keys, maps) is not None:
-        return None
+    if probe_on:
+        site.excluded = probe_exclusion(site, path_keys, maps)
+        if site.excluded is not None:
+            return None
     family_simple = set(site.class_path)
     family_top = site.class_path[0]
 

@@ -110,13 +110,28 @@ def sites_of(old, new, on):
         return [s for s in pyast.analyse(old.encode(), new.encode()) if s.kind == "import"]
 
 
-def refine(old, new, maps, on, path="pkg/mod.py"):
-    """refine_class_literal on every import site of a change."""
+def write_tree(root, files):
+    for rel, text in files.items():
+        os.makedirs(os.path.dirname(os.path.join(root, rel)), exist_ok=True)
+        with open(os.path.join(root, rel), "w") as fh:
+            fh.write(text)
+
+
+def refine(old, new, maps, on, path="pkg/mod.py", files=None, sites=None):
+    """refine_class_literal on every import site of a change, with the old source (and `files`)
+    as the pinned tree the subclass check reads."""
     out = []
-    with probe_flag(on):
-        for s in pyast.analyse(old.encode(), new.encode()):
-            if s.kind == "import":
-                out.append(impact.refine_class_literal(path, old.encode(), new.encode(), s, maps))
+    root = scratch()
+    try:
+        write_tree(root, {path: old, **(files or {})})
+        with probe_flag(on), impact.source_root(root):
+            for s in pyast.analyse(old.encode(), new.encode()):
+                if s.kind == "import":
+                    out.append(impact.refine_class_literal(path, old.encode(), new.encode(), s, maps))
+                    if sites is not None:
+                        sites.append(s)
+    finally:
+        shutil.rmtree(root, True)
     return out
 
 
@@ -167,12 +182,18 @@ class StaticExclusionTest(unittest.TestCase):
         old, new = "class A(Base):\n    X = 1\n", "class A(Base):\n    X = 2\n"
         self.assertEqual(refine(old, new, class_maps(), on=True), [USERS])
         site = sites_of(old, new, on=True)[0]
-        self.assertIsNone(impact.probe_exclusion(site, ["pkg.mod:A"], class_maps()))
+        root = scratch()
+        self.addCleanup(shutil.rmtree, root, True)
+        write_tree(root, {"pkg/mod.py": old})
+        with impact.source_root(root):
+            self.assertIsNone(impact.probe_exclusion(site, ["pkg.mod:A"], class_maps()))
+        # without a source to check subclasses against, nothing narrows
+        self.assertEqual(impact.probe_exclusion(site, ["pkg.mod:A"], class_maps()), "no source to check subclasses")
 
     def test_annotated_assignment(self):
-        self.assertExcluded("class A:\n    X: int = 1\n", "class A:\n    X: int = 2\n")
         self.assertExcluded("class A:\n    Y = 0\n", "class A:\n    Y = 0\n    X: int = 0\n")
         self.assertExcluded("class A:\n    Y = 0\n    X: int = 0\n", "class A:\n    Y = 0\n")
+        self.assertExcluded("class A:\n    Y = 0\n", "class A:\n    Y = 0\n    X: t.ClassVar = {'a': 1}\n")
 
     def test_assign_annassign_conversion(self):
         # the singlestore case: `X = True` -> `X: t.ClassVar[bool] = True` (NameError on 3.13 without `t`)
@@ -254,8 +275,202 @@ class StaticExclusionTest(unittest.TestCase):
         maps = FakeMaps(class_info=info, users=users, imported={"pkg/mod.py": ALL}, readers={"X": ALL})
         old = "class P:\n    class Tokenizer:\n        X = 1\n"
         new = old.replace("X = 1", "X = 2")
-        self.assertEqual(refine(old, new, maps, on=False), [0b11])
-        self.assertEqual(refine(old, new, maps, on=True), [0b1000_0011])
+        other = {"pkg/other.py": "from pkg.mod import P\n\n\nclass D:\n    class Tokenizer(P.Tokenizer):\n        pass\n"}
+        self.assertEqual(refine(old, new, maps, on=False, files=other), [0b11])
+        self.assertEqual(refine(old, new, maps, on=True, files=other), [0b1000_0011])
+
+
+class AnnotatedValueTest(unittest.TestCase):
+    """A changed annotated assignment whose only difference is a literal value narrows (item 1)."""
+
+    NARROWING = [
+        ("X: int = 1", "X: int = 2"),
+        ("X: t.ClassVar = {'a': 1}", "X: t.ClassVar = {'a': 2, 'b': 3}"),
+        ("X: t.ClassVar = 127", "X: t.ClassVar = 128"),
+        ("X: str | None = None", "X: str | None = 'x'"),
+        ("X: t.ClassVar[dict[str, tuple[str, ...]]] = {}", "X: t.ClassVar[dict[str, tuple[str, ...]]] = {'a': ('b',)}"),
+        ("X: 'Forward' = True", "X: 'Forward' = False"),
+    ]
+    NOT_VALUE_ONLY = [
+        ("X: int = 1", "X: float = 2"),                     # annotation changed
+        ("X: t.ClassVar = 1", "X: t.ClassVar[int] = 1"),    # annotation changed, same value
+        ("X: X = 1", "X: X = 2"),                           # the annotation reads the target
+        ("X: f() = 1", "X: f() = 2"),                       # the annotation calls something
+        ("X: (lambda: int)() = 1", "X: (lambda: int)() = 2"),
+        ("X: int = 1", "X: int"),                           # value removed
+        ("(X): int = 1", "(X): int = 2"),                   # not a simple target
+    ]
+
+    def wrap(self, stmt):
+        return f"class A:\n    Y = 0\n    {stmt}\n"
+
+    def test_site_facts(self):
+        for old, new in self.NARROWING:
+            with self.subTest(old=old, new=new):
+                sites = sites_of(self.wrap(old), self.wrap(new), on=True)
+                self.assertEqual([(s.annotated, s.value_only, s.literal) for s in sites], [(True, True, True)])
+        for old, new in self.NOT_VALUE_ONLY:
+            with self.subTest(old=old, new=new):
+                sites = sites_of(self.wrap(old), self.wrap(new), on=True)
+                self.assertTrue(sites)
+                self.assertFalse(any(s.value_only for s in sites), sites)
+
+    def test_value_only_narrows(self):
+        for old, new in self.NARROWING:
+            with self.subTest(old=old, new=new):
+                self.assertEqual(refine(self.wrap(old), self.wrap(new), class_maps(), on=True), [USERS])
+                self.assertEqual(refine(self.wrap(old), self.wrap(new), class_maps(), on=False), [USERS])
+
+    def test_everything_else_annotated_falls_back(self):
+        cases = self.NOT_VALUE_ONLY + [
+            ("Z = 0", "Z = 0\n    X: int = 0"),             # inserted
+            ("Z = 0\n    X: int = 0", "Z = 0"),             # removed
+            ("X = True", "X: t.ClassVar[bool] = True"),     # Assign -> AnnAssign
+            ("X: t.ClassVar[bool] = True", "X = True"),     # AnnAssign -> Assign
+            ("X = 1", "X: int = 2"),
+        ]
+        for old, new in cases:
+            with self.subTest(old=old, new=new):
+                sites = []
+                got = refine(self.wrap(old), self.wrap(new), class_maps(), on=True, sites=sites)
+                self.assertEqual(got, [None] * len(got))
+                for s in sites:
+                    if s.literal and s.annotated:
+                        self.assertIn("annotated assignment", s.excluded)
+
+    def test_excluded_classes_stay_excluded(self):
+        old, new = "X: t.ClassVar = 1", "X: t.ClassVar = 2"
+        for head in ("@dataclass\nclass A:", "class A(t.NamedTuple):", "class A(TypedDict):", "class A(Enum):",
+                     "class A(t.Protocol):", "class A(Base, metaclass=M):", "@trait\nclass A:"):
+            with self.subTest(head=head):
+                got = refine(f"{head}\n    {old}\n", f"{head}\n    {new}\n", class_maps(), on=True)
+                self.assertEqual(got, [None])
+        maps = class_maps(mro=("pkg.mod:A", "builtins:tuple"))
+        self.assertEqual(refine(self.wrap(old), self.wrap(new), maps, on=True), [None])
+
+
+class SubclassHeadTest(unittest.TestCase):
+    """Decorators, class keywords and special bases of subclasses, in any module (item 3)."""
+
+    OLD, NEW = "class A:\n    X = 1\n", "class A:\n    X = 2\n"
+
+    def maps(self, sub_mro=("pkg.other:B", "pkg.mod:A"), extra_imported=None):
+        imported = {"pkg/mod.py": ALL, "pkg/other.py": ALL, **(extra_imported or {})}
+        info = {"pkg.mod:A": (True, ("pkg.mod:A",))}
+        if sub_mro:
+            info[sub_mro[0]] = (True, tuple(sub_mro))
+        return FakeMaps(class_info=info, users={"pkg.mod:A": USERS}, imported=imported, readers={"X": ALL})
+
+    def check(self, other, narrows, maps=None, files=None, reason=None):
+        sites = []
+        got = refine(self.OLD, self.NEW, maps or self.maps(), on=True, files={"pkg/other.py": other, **(files or {})},
+                     sites=sites)
+        self.assertEqual(got, [USERS] if narrows else [None], other)
+        if reason is not None:
+            self.assertIn(reason, sites[0].excluded)
+
+    def test_plain_subclass_narrows(self):
+        self.check("from pkg.mod import A\n\n\nclass B(A):\n    Y = 1\n", True)
+
+    def test_decorated_subclass_in_another_module(self):
+        for deco in ("@register", "@dataclass", "@dataclass(frozen=True)", "@reg.add('b')", "@trait"):
+            with self.subTest(deco=deco):
+                # @trait not imported from sqlglot.helper: an unknown function
+                self.check(f"from pkg.mod import A\n\n\n{deco}\nclass B(A):\n    pass\n", False, reason="decorated")
+
+    def test_identity_decorators_are_allowed(self):
+        for imp, deco in [("from sqlglot.helper import trait", "@trait"),
+                          ("from sqlglot.helper import mypyc_attr", "@mypyc_attr(native_class=True)"),
+                          ("import unittest", "@unittest.skipIf(True, 'x')")]:
+            with self.subTest(deco=deco):
+                self.check(f"{imp}\nfrom pkg.mod import A\n\n\n{deco}\nclass B(A):\n    pass\n", True)
+        # the same name bound twice, or by `import *`, is not resolved
+        self.check("from sqlglot.helper import trait\nfrom pkg.mod import A\ntrait = lambda c: c\n\n\n@trait\n"
+                   "class B(A):\n    pass\n", False)
+        self.check("from sqlglot.helper import trait\nfrom x import *\nfrom pkg.mod import A\n\n\n@trait\n"
+                   "class B(A):\n    pass\n", False)
+        self.check("import unittest\nfrom pkg.mod import A\n\n\n@unittest.skip\nclass B(A):\n    pass\n", False)
+
+    def test_keywords_and_special_bases_of_subclasses(self):
+        for head in ("class B(A, flag=True):", "class B(A, metaclass=M):", "class B(A, Enum):",
+                     "class B(A, t.Generic[T]):", "class B(mk(A)):"):
+            with self.subTest(head=head):
+                self.check(f"from pkg.mod import A\n\n\n{head}\n    pass\n", False)
+        maps = self.maps(sub_mro=("pkg.other:B", "pkg.mod:A", "builtins:str"))
+        self.check("from pkg.mod import A\n\n\nclass B(A):\n    pass\n", False, maps=maps, reason="derives from")
+
+    def test_nested_and_unknown_subclasses(self):
+        maps = self.maps(sub_mro=("pkg.other:C.B", "pkg.mod:A"))
+        self.check("from pkg.mod import A\n\n\nclass C:\n    @register\n    class B(A):\n        pass\n", False,
+                   maps=maps)
+        self.check("from pkg.mod import A\n\n\nclass C:\n    class B(A):\n        pass\n", True, maps=maps)
+        # the maps name a subclass whose class statement is not in the source
+        self.check("from pkg.mod import A\nB = type('B', (A,), {})\n", False, reason="not found")
+
+    def test_classes_the_maps_do_not_describe(self):
+        # a class in tests/ (or made inside a function) may subclass A: its head counts too
+        bad = {"tests/test_x.py": "from pkg.mod import A\nimport dataclasses\n\n\n@dataclasses.dataclass\n"
+                                  "class T(A):\n    pass\n"}
+        maps = self.maps(sub_mro=None, extra_imported={"tests/test_x.py": 1})
+        self.check("Y = 1\n", False, maps=maps, files=bad, reason="possible subclass")
+        local = {"tests/test_x.py": "from pkg.mod import A\n\n\ndef test():\n    class T(A, flag=1):\n        pass\n"}
+        self.check("Y = 1\n", False, maps=maps, files=local, reason="possible subclass")
+        alias = {"tests/test_x.py": "from pkg.mod import A\nfrom enum import Enum as E\n\n\nclass T(A, E):\n    X = 1\n"}
+        self.check("Y = 1\n", False, maps=maps, files=alias, reason="possible subclass")
+        # standard-library bases only: cannot be a subclass of A
+        fine = {"tests/test_x.py": "import enum\nfrom dataclasses import dataclass\nimport unittest\n\n\n"
+                                   "@dataclass\nclass T:\n    a: int = 0\n\n\nclass C(enum.Enum):\n    X = 1\n\n\n"
+                                   "@unittest.skipIf(False, 'x')\nclass Case(unittest.TestCase):\n    pass\n"}
+        self.check("Y = 1\n", True, maps=maps, files=fine)
+        # a module no test imports is not looked at
+        self.check("Y = 1\n", True, maps=self.maps(sub_mro=None, extra_imported={"tests/test_x.py": 0}), files=bad)
+
+
+class PrefilterTest(unittest.TestCase):
+    """pyast.class_statements_to_parse must report every class statement _head_problem objects to."""
+
+    SPECIAL = impact._SPECIAL_BASES
+
+    def reported(self, src):
+        return pyast.class_statements_to_parse(src.encode(), self.SPECIAL)
+
+    def problems(self, src):
+        facts = pyast.module_class_facts(src.encode(), "m")
+        return [(f.lineno, impact._head_problem(f)) for f in facts if impact._head_problem(f)]
+
+    def test_shapes(self):
+        cases = [
+            ("class A(B):\n    pass\n", False),
+            ("class A(B, c.D):  # x\n    pass\n", False),
+            ("class A(B): ...\n", False),
+            ("@d\nclass A:\n    pass\n", True),
+            ("@d(1,\n   2)\n\n# c\nclass A:\n    pass\n", True),
+            ("@d(\n    'x'\n)\nclass A:\n    pass\n", True),
+            ("@d\n@e(\n  1)\nclass A:\n    pass\n", True),
+            ("@d\n@e\ndef f():\n    pass\n", False),
+            ("@d(\n    '''x\n    y''')\nclass A:\n    pass\n", True),
+            ("@d \\\n  .e\nclass A:\n    pass\n", True),
+            ("class A(B,\n        C):\n    pass\n", True),
+            ("class A(B, metaclass=M):\n    pass\n", True),
+            ("class A(t.NamedTuple):\n    pass\n", True),
+            ("class A[T]:\n    pass\n", True),
+            ("if x:\n    class A(B):\n        pass\nelse:\n    @d\n    class A(B):\n        pass\n", True),
+            ("class A(B):\r    pass\r@d\rclass C:\r    pass\r", True),  # old Mac newlines
+            ("x = '''\nclass A(B, metaclass=M):\n'''\n", True),  # a string: a false report is fine
+            ("from enum import Enum as E\n\n\nclass A(B, E):\n    pass\n", True),  # an alias of a special base
+            ("import typing as t\n\n\nclass A(t.Mapping):\n    pass\n", False),
+        ]
+        for src, expect in cases:
+            with self.subTest(src=src):
+                self.assertEqual(bool(self.reported(src)), expect, self.reported(src))
+                if self.problems(src.replace("\r", "\n")):
+                    self.assertTrue(self.reported(src))
+
+    def test_names_only_when_unique(self):
+        got = self.reported("@d\nclass A:\n    pass\n\n\nclass B(Enum):\n    pass\n")
+        self.assertEqual([(n, top) for _, n, top, _ in got], [("A", True), ("B", True)])
+        got = self.reported("class A(Enum):\n    pass\n\n\nclass A:\n    pass\n")
+        self.assertEqual([n for _, n, _, _ in got], [None])
 
 
 # --- B. conditional narrowing in commit_impact ------------------------------------------------
@@ -377,13 +592,25 @@ class ResolutionTest(unittest.TestCase):
         unapplicable = "diff --git a/sqlglot/b.py b/sqlglot/b.py\n--- a/sqlglot/b.py\n+++ b/sqlglot/b.py\n" \
                        "@@ -1,2 +1,2 @@\n class Nope:\n-    Q = 1\n+    Q = 2\n"
         syntax = diff("sqlglot/b.py", MOD_B, MOD_B + "def (\n")
-        outside = diff("tests/test_a.py", "X = 1\n", "X = 2\n")
         package_data = diff("sqlglot/data.json", "{}\n", "{\"a\": 1}\n")
         twice = self.LIT_A + diff("sqlglot/a.py", MOD_A, MOD_A.replace("X = 1", "X = 3"))
+        # outside sqlglot/: added, deleted, renamed files, syntax errors, unapplicable hunks still block
+        added_test = "diff --git a/tests/test_new.py b/tests/test_new.py\nnew file mode 100644\n--- /dev/null\n" \
+                     "+++ b/tests/test_new.py\n@@ -0,0 +1 @@\n+X = 1\n"
+        deleted_test = "diff --git a/tests/test_a.py b/tests/test_a.py\ndeleted file mode 100644\n" \
+                       "--- a/tests/test_a.py\n+++ /dev/null\n@@ -1 +0,0 @@\n-X = 1\n"
+        renamed_test = "diff --git a/tests/test_a.py b/tests/test_b.py\nsimilarity index 100%\n" \
+                       "rename from tests/test_a.py\nrename to tests/test_b.py\n"
+        syntax_test = diff("tests/test_a.py", "X = 1\n", "X = (\n")
+        unapplicable_test = "diff --git a/tests/test_a.py b/tests/test_a.py\n--- a/tests/test_a.py\n" \
+                            "+++ b/tests/test_a.py\n@@ -1 +1 @@\n-Y = 1\n+Y = 2\n"
+        twice_test = diff("tests/test_a.py", "X = 1\n", "X = 2\n") + diff("tests/test_a.py", "X = 1\n", "X = 3\n")
         for name, extra in [("added", added), ("deleted", deleted), ("renamed", renamed), ("binary", binary),
                             ("not applicable", unapplicable), ("syntax error", syntax),
-                            ("python outside sqlglot", outside), ("package data", package_data),
-                            ("same path twice", twice)]:
+                            ("package data", package_data), ("same path twice", twice),
+                            ("test added", added_test), ("test deleted", deleted_test),
+                            ("test renamed", renamed_test), ("test syntax error", syntax_test),
+                            ("test not applicable", unapplicable_test), ("test patched twice", twice_test)]:
             with self.subTest(name):
                 probe = FakeProbe(True)
                 patch = extra if name == "same path twice" else self.LIT_A + extra
@@ -398,6 +625,46 @@ class ResolutionTest(unittest.TestCase):
         self.assertEqual(len(probe.calls), 1)
         self.assertEqual(sorted(probe.calls[0]), ["sqlglot/a.py"])
         self.assertEqual(res.bits, NARROW)
+
+    def test_python_outside_the_package_does_not_block(self):
+        # the probe child imports only sqlglot modules: tests/, setup.py, sqlglotc/ edits cannot change it
+        for path, old, new in [("tests/test_a.py", "X = 1\n", "X = 2\n"),
+                               ("tests/test_a.py", "X = 1\n", "X = 1\n\ndef test_x():\n    assert 1\n"),
+                               ("setup.py", "from setuptools import setup\n", "from setuptools import setup\nsetup()\n"),
+                               ("sqlglotc/setup.py", "X = 1\n", "X = 2\n")]:
+            with self.subTest(path=path, new=new):
+                write_tree(self.src, {path: old})
+                probe = FakeProbe(True)
+                res = self.impact(self.LIT_A + diff(path, old, new), probe)
+                self.assertEqual(res.probe_blockers, [])
+                self.assertEqual(len(probe.calls), 1)
+                self.assertEqual(sorted(probe.calls[0]), ["sqlglot/a.py"])  # only sqlglot modules are overlaid
+                self.assertIn(path, res.patched)  # still recorded for the other users of res.patched
+                self.assertEqual(res.bits & 0b0000_1111, NARROW)
+                self.assertTrue(res.notes[0].startswith("literal narrowing kept"), res.notes)
+
+    def test_hooks_and_top_level_modules_still_select_everything(self):
+        for path in ("conftest.py", "tests/conftest.py", "tests/sitecustomize.py", "sitecustomize.py",
+                     "tests/usercustomize.py", "helpers.py"):
+            with self.subTest(path=path):
+                write_tree(self.src, {path: "X = 1\n"})
+                with self.assertRaises(impact.Everything):
+                    self.impact(self.LIT_A + diff(path, "X = 1\n", "X = 2\n"), FakeProbe(True))
+
+    def test_verdict_and_exclusions_lead_the_notes(self):
+        # main.py logs res.notes[:6]: the verdict must not be pushed out by many other notes
+        many = "".join(diff(f"sqlglot/m{i}.py", "X = f()\n", "X = g()\n") for i in range(8))
+        for i in range(8):
+            with open(os.path.join(self.src, f"sqlglot/m{i}.py"), "w") as fh:
+                fh.write("X = f()\n")
+        probe = FakeProbe(True)
+        res = self.impact(many + self.LIT_A, probe)
+        self.assertGreater(len(res.notes), 6)
+        self.assertEqual(res.notes[0], "literal narrowing kept: patched code imports cleanly (1 site(s))")
+        res = self.impact(many + self.LIT_A, FakeProbe(False))
+        self.assertEqual(res.notes[0], "literal narrowing dropped: patched code did not import cleanly")
+        res = self.impact(self.LIT_A, FakeProbe(True), on=False)
+        self.assertFalse(any("literal narrowing" in n for n in res.notes))  # flag off: notes unchanged
 
 
 # --- the real probe child ----------------------------------------------------------------------
@@ -472,17 +739,17 @@ class RealProbeTest(unittest.TestCase):
     def test_flooding_output(self):
         flood = "    pass\nimport sys\nfor _ in range(64):\n    sys.stdout.write('x' * 65536)\n" \
                 "    sys.stderr.write('y' * 65536)\n"
-        out = tempfile.TemporaryFile()
-        saved = os.dup(1)
-        os.dup2(out.fileno(), 1)
-        try:
-            clean = self.probe(self.kinds(flood))[0]
-            failing = self.probe(self.kinds(flood + "raise RuntimeError('x')\n"))[0]
-        finally:
-            os.dup2(saved, 1)
-            os.close(saved)
-        out.seek(0)
-        self.assertEqual(out.read(), b"")  # nothing reaches the selector's stdout
+        with tempfile.TemporaryFile() as out:
+            saved = os.dup(1)
+            os.dup2(out.fileno(), 1)
+            try:
+                clean = self.probe(self.kinds(flood))[0]
+                failing = self.probe(self.kinds(flood + "raise RuntimeError('x')\n"))[0]
+            finally:
+                os.dup2(saved, 1)
+                os.close(saved)
+            out.seek(0)
+            self.assertEqual(out.read(), b"")  # nothing reaches the selector's stdout
         self.assertTrue(clean)  # output alone does not fail a test
         self.assertFalse(failing)
 
@@ -610,6 +877,48 @@ class PinnedSqlglotTest(unittest.TestCase):
                 on, calls = self.select(patch, on=True)
                 self.assertEqual(importers & ~on, 0)
                 self.assertTrue(all(c is False for c in calls), calls)  # probed only when a narrowing was left
+
+    def test_prefilter_agrees_with_parsing_on_the_pinned_tree(self):
+        # every class statement _head_problem objects to is reported from the bytes alone, and the
+        # pinned tree has no foreign class (tests/, function-local) that could be a subclass
+        for path in self.maps.files:
+            if not (path.endswith(".py") and self.maps.imported(path)):
+                continue
+            with open(os.path.join(self.src, path), "rb") as fh:
+                src = fh.read()
+            reported = {line for line, _, _, _ in pyast.class_statements_to_parse(src, impact._SPECIAL_BASES)}
+            for f in pyast.module_class_facts(src, impact._module_of(path), path.endswith("__init__.py")):
+                if impact._head_problem(f):
+                    self.assertIn(f.lineno, reported, (path, f.lineno))
+        self.assertIsNone(impact._foreign_offender(self.maps, self.src))
+
+    def test_annotated_value_edits_narrow(self):
+        for path, old, new in [
+            ("sqlglot/optimizer/simplify.py", "TINYINT_MAX: t.ClassVar = 127", "TINYINT_MAX: t.ClassVar = 126"),
+            ("sqlglot/dialects/tsql.py", "    WEEK_OFFSET = -1\n", "    WEEK_OFFSET = -2\n"),
+        ]:
+            with self.subTest(path):
+                with open(os.path.join(self.src, path)) as fh:
+                    if old not in fh.read():
+                        self.skipTest(f"{old!r} not in {path}")
+                patch = _edit(self.src, path, old, new)
+                off, _ = self.select(patch, on=False)
+                on, calls = self.select(patch, on=True)
+                self.assertEqual(calls, [True])
+                self.assertEqual(on, off)
+                self.assertNotEqual(self.maps.imported(path) & ~on, 0)
+
+    def test_test_file_edit_keeps_the_narrowing(self):
+        lit = _edit(self.src, "sqlglot/dialects/tsql.py", "    WEEK_OFFSET = -1\n", "    WEEK_OFFSET = -2\n")
+        alone, _ = self.select(lit, on=True)
+        for extra in (_edit(self.src, "tests/test_tokens.py", "class TestTokens(unittest.TestCase):",
+                            "class TestTokens(unittest.TestCase):\n    X = 1"),
+                      _edit(self.src, "setup.py", "from setuptools import setup", "from setuptools import setup  # x")):
+            with self.subTest(extra.splitlines()[0]):
+                both, calls = self.select(lit + extra, on=True)
+                self.assertEqual(calls, [True])
+                extra_bits, _ = self.select(extra, on=True)
+                self.assertEqual(both, alone | extra_bits)
 
     def test_clean_edits_still_narrow(self):
         for name, path, old, new in CLEAN_EDITS:
