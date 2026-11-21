@@ -173,6 +173,25 @@ def parse(data):
     return patches
 
 
+def misplaced_hunk(fp):
+    """The first hunk whose stated new position disagrees with its old position, or None.
+
+    git apply looks for a hunk at its *new* line number in the partly patched file, we apply
+    at the old one. A git-made patch has new = old + (lines added - removed by earlier hunks);
+    if a header says otherwise and the context also occurs near the stated new position, git
+    changes other lines than we analyse. An empty side names the line before it."""
+    offset = 0
+    last = 0
+    for h in fp.hunks:
+        old_pos = h.old_start if h.old_len else h.old_start + 1
+        new_pos = h.new_start if h.new_len else h.new_start + 1
+        if new_pos != old_pos + offset or old_pos < last:
+            return h
+        last = old_pos + h.old_len
+        offset += h.new_len - h.old_len
+    return None
+
+
 def _no_newline(hunk):
     if hunk.lines:
         tag, content = hunk.lines[-1]

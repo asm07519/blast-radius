@@ -152,5 +152,46 @@ class StrictPathsTest(unittest.TestCase):
             self.assertFalse(impact.strict_paths())
 
 
+class MisplacedHunkTest(unittest.TestCase):
+    """git apply looks for a hunk at its new line number; a header that disagrees is refused."""
+
+    def hunks(self, *headers):
+        from selector.patch import misplaced_hunk
+        text = "--- a/x.py\n+++ b/x.py\n"
+        for old_start, old_len, new_start, new_len in headers:
+            text += f"@@ -{old_start},{old_len} +{new_start},{new_len} @@\n"
+            keep = min(old_len, new_len)
+            text += " c\n" * keep + "-o\n" * (old_len - keep) + "+n\n" * (new_len - keep)
+        (fp,) = parse(text.encode())
+        return misplaced_hunk(fp)
+
+    def test_consistent(self):
+        self.assertIsNone(self.hunks((5, 3, 5, 4)))
+        self.assertIsNone(self.hunks((5, 3, 5, 4), (20, 2, 21, 1), (40, 1, 40, 1)))
+        self.assertIsNone(self.hunks((0, 0, 1, 3)))          # new file
+        self.assertIsNone(self.hunks((1, 3, 0, 0)))          # emptied file
+        self.assertIsNone(self.hunks((7, 0, 8, 2), (20, 2, 22, 2)))   # pure insertion after line 7
+        self.assertIsNone(self.hunks((7, 2, 6, 0), (20, 2, 18, 2)))   # pure deletion
+
+    def test_misplaced(self):
+        self.assertIsNotNone(self.hunks((1691, 2, 1793, 3)))
+        self.assertIsNotNone(self.hunks((5, 3, 5, 4), (20, 2, 20, 2)))
+        self.assertIsNotNone(self.hunks((20, 2, 20, 2), (5, 3, 5, 3)))
+
+    def test_flag(self):
+        src = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, src, True)
+        os.makedirs(os.path.join(src, "sqlglot/dialects"))
+        with open(os.path.join(src, "sqlglot/dialects/tsql.py"), "w") as fh:
+            fh.write(OLD)
+        p = "sqlglot/dialects/tsql.py"
+        fps = parse((f"diff --git a/{p} b/{p}\n--- a/{p}\n+++ b/{p}\n"
+                     "@@ -1,2 +9,2 @@\n def f():\n-    return 1\n+    return 2\n").encode())
+        with unittest.mock.patch.dict(os.environ, {"BR_STRICT_PATHS": "1"}):
+            with self.assertRaises(impact.Everything) as caught:
+                impact.commit_impact(fps, src, Maps())
+            self.assertIn("out of place", str(caught.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

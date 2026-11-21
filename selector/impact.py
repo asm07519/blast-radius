@@ -14,7 +14,7 @@ import re
 import sys
 
 from . import pyast
-from .patch import PatchError, apply
+from .patch import PatchError, apply, misplaced_hunk
 
 try:
     import tomllib
@@ -44,8 +44,10 @@ def crash_guard():
 
 def strict_paths():
     """BR_STRICT_PATHS=1: a patch whose file names git apply could read differently than we do
-    (other prefixes than a/ b/, spaces around a name, header disagreement), or that modifies,
-    renames or deletes a file the pinned tree does not have, selects every test."""
+    (other prefixes than a/ b/, spaces around a name, header disagreement), that modifies,
+    renames or deletes a file the pinned tree does not have, or whose hunk headers put a hunk
+    somewhere else than its old line number implies (git apply goes by the new line number),
+    selects every test."""
     return os.environ.get("BR_STRICT_PATHS") == "1"
 
 
@@ -167,6 +169,9 @@ def commit_impact(file_patches, src_root, maps, import_refiner=None, import_prob
             if fp.old_path is not None and not fp.mode_only and (
                     read_src(src_root, fp.old_path) is None or not _exact_case(src_root, fp.old_path)):
                 raise Everything(f"{fp.old_path}: changes a file the pinned tree does not have")
+            bad = misplaced_hunk(fp)
+            if bad is not None:
+                raise Everything(f"{fp.path}: hunk -{bad.old_start} +{bad.new_start} is out of place")
     if crash_guard():
         for fp in file_patches:
             found = _kills_process(fp)
