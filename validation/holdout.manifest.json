@@ -1,0 +1,9127 @@
+{
+ "count": 373,
+ "families": {
+  "class_literal": 4,
+  "class_table": 22,
+  "cmp_swap": 4,
+  "comment": 4,
+  "compound_eq": 10,
+  "compound_mixed": 8,
+  "delete_line": 3,
+  "docs_file": 1,
+  "file_ops": 18,
+  "hash_order": 3,
+  "hook_config": 10,
+  "import_edit": 12,
+  "insert_branch": 20,
+  "literal_init_error": 14,
+  "m0_op": 135,
+  "malformed": 22,
+  "metadata": 16,
+  "registry": 14,
+  "runtime_error": 12,
+  "shared_state": 14,
+  "syntax_error": 2,
+  "test_edit": 16,
+  "timeout": 3,
+  "token_flip": 6
+ },
+ "generator": "tools/mutants.py",
+ "generator_version": "v2.1",
+ "patches": [
+  {
+   "bytes": 502,
+   "detail": "lt:>->>=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       3450,
+       3451
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h001",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#6"
+   ],
+   "sha256": "8fcfc18e0e3b6050e4445287f915e0a3b0a143fab4a29087b12b5ef76b4e1ea4",
+   "tags": []
+  },
+  {
+   "bytes": 720,
+   "detail": "counter_degrade:5000",
+   "family": "shared_state",
+   "files": [
+    {
+     "lines": [
+      [
+       12,
+       12
+      ],
+      [
+       114,
+       114
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/optimizer/scope.py"
+    }
+   ],
+   "id": "h002",
+   "labellable": true,
+   "regions": [
+    "sqlglot/optimizer/scope.py"
+   ],
+   "sha256": "194b225bce32feabbb655c6f7d9d34280f9f4288f743edab15972a8e8f9a63e7",
+   "tags": []
+  },
+  {
+   "bytes": 349,
+   "detail": "class_rename",
+   "family": "registry",
+   "files": [
+    {
+     "lines": [
+      [
+       10,
+       11
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/dialects/starrocks.py"
+    }
+   ],
+   "id": "h003",
+   "labellable": true,
+   "regions": [
+    "sqlglot/dialects/starrocks.py"
+   ],
+   "sha256": "1bec298157079acb8adebc87d3fd74143358182019b54693f45c3f578e07ebe3",
+   "tags": []
+  },
+  {
+   "bytes": 405,
+   "detail": "helpers_token",
+   "family": "test_edit",
+   "files": [
+    {
+     "lines": [
+      [
+       229,
+       230
+      ]
+     ],
+     "op": "modify",
+     "path": "tests/helpers.py"
+    }
+   ],
+   "id": "h004",
+   "labellable": true,
+   "regions": [
+    "tests/helpers.py#5"
+   ],
+   "sha256": "b77e01dd415bab5b5a342dd10f276b3e6b903741f29472359a32fc276efa6afc",
+   "tags": []
+  },
+  {
+   "bytes": 864,
+   "detail": "linked_return",
+   "family": "compound_eq",
+   "files": [
+    {
+     "lines": [
+      [
+       273,
+       274
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/lineage.py",
+     "role": "cmp_swap"
+    },
+    {
+     "lines": [
+      [
+       348,
+       349
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/planner.py",
+     "role": "producer:id"
+    }
+   ],
+   "id": "h005",
+   "labellable": true,
+   "regions": [
+    "sqlglot/lineage.py",
+    "sqlglot/planner.py"
+   ],
+   "sha256": "4974ee5a1dd0a0e4f25a3024a206ad2fb6505af5e114b736284e132b5b2afdf7",
+   "tags": []
+  },
+  {
+   "bytes": 473,
+   "detail": "copy:copy=False->True",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       730,
+       731
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h006",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#1"
+   ],
+   "sha256": "c9ee0f0e1dba6a36afcaeece84876bc5e3696c9f95bf3cd5bebd5ec71a377a3c",
+   "tags": []
+  },
+  {
+   "bytes": 474,
+   "detail": "is:is->==",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       767,
+       768
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/snowflake.py"
+    }
+   ],
+   "id": "h007",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/snowflake.py"
+   ],
+   "sha256": "78129b1e521d44b070e4d4a5638aeed369ee05f6cb139ad2015bd32f9ac51ec1",
+   "tags": []
+  },
+  {
+   "bytes": 275,
+   "detail": "zero_context_modify",
+   "family": "malformed",
+   "files": [
+    {
+     "lines": [
+      [
+       198,
+       199
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parser.py"
+    }
+   ],
+   "id": "h008",
+   "labellable": false,
+   "regions": [
+    "sqlglot/parser.py#0"
+   ],
+   "sha256": "349a25039f17e4cbe218d1f990a7a9f31d584958c46d82fa2ca596931bec511b",
+   "tags": []
+  },
+  {
+   "bytes": 530,
+   "detail": "large_dict_add",
+   "family": "class_table",
+   "files": [
+    {
+     "lines": [
+      [
+       137,
+       137
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/presto.py"
+    }
+   ],
+   "id": "h009",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/presto.py"
+   ],
+   "sha256": "54db90becb80849276df2504d061859b8aee6667772c1eb64135a0ef635c68ba",
+   "tags": []
+  },
+  {
+   "bytes": 569,
+   "detail": "copy:copy=False->True",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       984,
+       985
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h010",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#1"
+   ],
+   "sha256": "c70cbe39eca1bdad6a4ea87fb02f395e710058acab8cc8761311c2a6d17ca29e",
+   "tags": []
+  },
+  {
+   "bytes": 676,
+   "detail": "any_return",
+   "family": "compound_eq",
+   "files": [
+    {
+     "lines": [
+      [
+       5104,
+       5105
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parser.py",
+     "role": "cmp_swap"
+    },
+    {
+     "lines": [
+      [
+       84,
+       85
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/time.py",
+     "role": "producer:subsecond_precision"
+    }
+   ],
+   "id": "h011",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parser.py#10",
+    "sqlglot/time.py"
+   ],
+   "sha256": "fe9bfc1a722e485e50dc152c85154ce951d7c4d7dbf1917d9b17c95dce69ce2e",
+   "tags": []
+  },
+  {
+   "bytes": 392,
+   "detail": "base_swap",
+   "family": "registry",
+   "files": [
+    {
+     "lines": [
+      [
+       443,
+       444
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/expressions/functions.py"
+    }
+   ],
+   "id": "h012",
+   "labellable": true,
+   "regions": [
+    "sqlglot/expressions/functions.py#0"
+   ],
+   "sha256": "b48e2ab7486de9fe6ed2d08eef6bd3a25026914410bfe0e34eb4335f2baf423a",
+   "tags": []
+  },
+  {
+   "bytes": 563,
+   "detail": "eq:==->!=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       184,
+       185
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/oracle.py"
+    }
+   ],
+   "id": "h013",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/oracle.py"
+   ],
+   "sha256": "d8a71861eb2e4e12c23174078075ed1538fca8f32490c26b62e35159758c6c88",
+   "tags": []
+  },
+  {
+   "bytes": 346,
+   "detail": "after_return_dead",
+   "family": "insert_branch",
+   "files": [
+    {
+     "lines": [
+      [
+       92,
+       92
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parser.py"
+    }
+   ],
+   "id": "h014",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parser.py#0"
+   ],
+   "sha256": "47f7b82795f736dcd40cab09b44583ffd624e7a12dd010801c5fe496adc056cc",
+   "tags": []
+  },
+  {
+   "bytes": 410,
+   "detail": "eq:==->!=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       51,
+       52
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/presto.py"
+    }
+   ],
+   "id": "h015",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/presto.py"
+   ],
+   "sha256": "f15c0622f103abeb09756f7a27804694effb3f6a1b86237dee2d35de7c6365d2",
+   "tags": []
+  },
+  {
+   "bytes": 523,
+   "detail": "kwbool:begin=True->False",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       161,
+       162
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/trino.py"
+    }
+   ],
+   "id": "h016",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/trino.py"
+   ],
+   "sha256": "5e7fbfe22db35b394ff0b72ee6603d1e68db542966fc2f106b3b494cbc4adaf3",
+   "tags": []
+  },
+  {
+   "bytes": 286,
+   "detail": "class_table_mutate",
+   "family": "shared_state",
+   "files": [
+    {
+     "lines": [
+      [
+       1859,
+       1859
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/expressions/core.py"
+    }
+   ],
+   "id": "h017",
+   "labellable": true,
+   "regions": [
+    "sqlglot/expressions/core.py#3"
+   ],
+   "sha256": "517c8cbbc9468fe71ff39c40db5b42674ae2790290fafbd4235a08822c5f95e1",
+   "tags": []
+  },
+  {
+   "bytes": 298,
+   "detail": "class_rename",
+   "family": "registry",
+   "files": [
+    {
+     "lines": [
+      [
+       8,
+       9
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/dialects/dax.py"
+    }
+   ],
+   "id": "h018",
+   "labellable": true,
+   "regions": [
+    "sqlglot/dialects/dax.py"
+   ],
+   "sha256": "316c1f9ee8ee1f4dcebebded6ef5c5e53af7f0c81afb41ee9077ce53455b90d1",
+   "tags": []
+  },
+  {
+   "bytes": 540,
+   "detail": "lt:>->>=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       98,
+       99
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/databricks.py"
+    }
+   ],
+   "id": "h019",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/databricks.py"
+   ],
+   "sha256": "6932df6cc67269388a1e7cf27484b722411db1eb3b8e0550447807ec3cf9f451",
+   "tags": []
+  },
+  {
+   "bytes": 622,
+   "detail": "is:is->==",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       167,
+       168
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/hive.py"
+    }
+   ],
+   "id": "h020",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/hive.py"
+   ],
+   "sha256": "c2c47d12364c4f4e9e03e37d847fd886f568deca06d24dfc5c63613906cc8bda",
+   "tags": []
+  },
+  {
+   "bytes": 334,
+   "detail": "source_text_comment",
+   "family": "metadata",
+   "files": [
+    {
+     "lines": [
+      [
+       127,
+       127
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/expressions/aggregate.py"
+    }
+   ],
+   "id": "h021",
+   "labellable": true,
+   "regions": [
+    "sqlglot/expressions/aggregate.py#0"
+   ],
+   "sha256": "f5127972af8c708797eabd7173e9e30097ad9b353e6148e737578c2f4c8288b3",
+   "tags": []
+  },
+  {
+   "bytes": 818,
+   "detail": "fixture_comment+m0",
+   "family": "compound_mixed",
+   "files": [
+    {
+     "lines": [
+      [
+       49,
+       50
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/materialize.py"
+    },
+    {
+     "lines": [
+      [
+       716,
+       716
+      ]
+     ],
+     "op": "modify",
+     "path": "tests/fixtures/optimizer/simplify.sql"
+    }
+   ],
+   "id": "h022",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/materialize.py",
+    "tests/fixtures/optimizer/simplify.sql#1"
+   ],
+   "sha256": "10954d4d80b95f9118cfe25387fdef96d5f072624d1e429649faa1869db446ec",
+   "tags": []
+  },
+  {
+   "bytes": 593,
+   "detail": "sorted->list",
+   "family": "hash_order",
+   "files": [
+    {
+     "lines": [
+      [
+       1105,
+       1106
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/optimizer/simplify.py"
+    }
+   ],
+   "id": "h023",
+   "labellable": true,
+   "regions": [
+    "sqlglot/optimizer/simplify.py#2"
+   ],
+   "sha256": "e413181937ca595519f56a82eb52a37e0455c38578d5c76631b7feacc992946a",
+   "tags": []
+  },
+  {
+   "bytes": 764,
+   "detail": "in:in->not in",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       150,
+       151
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/databricks.py"
+    }
+   ],
+   "id": "h024",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/databricks.py"
+   ],
+   "sha256": "c4f898c2f5c390803c2668a2edce0c51aa28be4cbf4cfab688ae5fd59569edf7",
+   "tags": []
+  },
+  {
+   "bytes": 455,
+   "detail": "eq:!=->==",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       600,
+       601
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/doris.py"
+    }
+   ],
+   "id": "h025",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/doris.py"
+   ],
+   "sha256": "9b0954da7990fc49b1c801b6fd0d2ed5aa956e331d14ff46cf2ffe01c56b7deb",
+   "tags": []
+  },
+  {
+   "bytes": 497,
+   "detail": "loop_break",
+   "family": "insert_branch",
+   "files": [
+    {
+     "lines": [
+      [
+       758,
+       758
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/clickhouse.py"
+    }
+   ],
+   "id": "h026",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/clickhouse.py"
+   ],
+   "sha256": "d8e6b22164223b35fcc31a0315f7b55cd4cc8bf56366e8e4de48ecbf5626d0f5",
+   "tags": []
+  },
+  {
+   "bytes": 628,
+   "detail": "add_lru_cache",
+   "family": "shared_state",
+   "files": [
+    {
+     "lines": [
+      [
+       27,
+       27
+      ],
+      [
+       203,
+       203
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parser.py"
+    }
+   ],
+   "id": "h027",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parser.py#0"
+   ],
+   "sha256": "539fa17075e0c68bfe52939e5a12211d71bd240b8345cc74b97a7e1913008b2b",
+   "tags": []
+  },
+  {
+   "bytes": 196,
+   "detail": "zero_context_insert",
+   "family": "malformed",
+   "files": [
+    {
+     "lines": [
+      [
+       707,
+       707
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/tsql.py"
+    }
+   ],
+   "id": "h028",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/tsql.py"
+   ],
+   "sha256": "990337cb391625ae1e96c8b195f3f595e9f149aa61830d99a674328744877860",
+   "tags": []
+  },
+  {
+   "bytes": 286,
+   "detail": "base_remove",
+   "family": "registry",
+   "files": [
+    {
+     "lines": [
+      [
+       295,
+       296
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/expressions/dml.py"
+    }
+   ],
+   "id": "h029",
+   "labellable": true,
+   "regions": [
+    "sqlglot/expressions/dml.py#0"
+   ],
+   "sha256": "6b60f0b2b09c7237331e4ad795f6b4f8af86a8f5d0e7ba030c4e06cfbadbd853",
+   "tags": []
+  },
+  {
+   "bytes": 456,
+   "detail": "class_table_mutate",
+   "family": "shared_state",
+   "files": [
+    {
+     "lines": [
+      [
+       885,
+       885
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/exasol.py"
+    }
+   ],
+   "id": "h030",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/exasol.py"
+   ],
+   "sha256": "dea4b6f3c441b2479c6b90b1f9263ea4eed09210911dd7bea9aa6cca2dee89f9",
+   "tags": []
+  },
+  {
+   "bytes": 599,
+   "detail": "lt:>->>=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       153,
+       154
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/hive.py"
+    }
+   ],
+   "id": "h031",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/hive.py"
+   ],
+   "sha256": "2a2d58aa9def6af5200705e85eedd2739fa5a3af5cd5e54d2fc8303d63698974",
+   "tags": []
+  },
+  {
+   "bytes": 392,
+   "detail": "annotation_return",
+   "family": "metadata",
+   "files": [
+    {
+     "lines": [
+      [
+       5035,
+       5036
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generator.py"
+    }
+   ],
+   "id": "h032",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generator.py#10"
+   ],
+   "sha256": "aeea23bee8e7dfcffc1b1ca17fbb97ca750650718f55f741135d853742c81ff4",
+   "tags": []
+  },
+  {
+   "bytes": 317,
+   "detail": "annotation_attr",
+   "family": "metadata",
+   "files": [
+    {
+     "lines": [
+      [
+       543,
+       544
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parser.py"
+    }
+   ],
+   "id": "h033",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parser.py#1"
+   ],
+   "sha256": "8d085160c2c6db22ff360e635d327d15b48ff8da91408d8456596d5a13708d26",
+   "tags": []
+  },
+  {
+   "bytes": 307,
+   "detail": "decorator_remove",
+   "family": "registry",
+   "files": [
+    {
+     "lines": [
+      [
+       80,
+       81
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/lineage.py"
+    }
+   ],
+   "id": "h034",
+   "labellable": true,
+   "regions": [
+    "sqlglot/lineage.py"
+   ],
+   "sha256": "9d6090748ce3d83b2eb2048071efa83ff60cc06479dfe5fd100d803b9b6ae7e1",
+   "tags": []
+  },
+  {
+   "bytes": 420,
+   "detail": "lt:<=-><",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       291,
+       292
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/tsql.py"
+    }
+   ],
+   "id": "h035",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/tsql.py"
+   ],
+   "sha256": "46a2cd47c9cdfa18450b1a7fabf7b572f287c264d538b5747cf15d91f8a6cf7c",
+   "tags": []
+  },
+  {
+   "bytes": 631,
+   "detail": "boolop:or->and",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       156,
+       157
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/hive.py"
+    }
+   ],
+   "id": "h036",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/hive.py"
+   ],
+   "sha256": "65402209ae289dd267edb376791f72bace3495aa49db3137af6b824b27bbf18e",
+   "tags": []
+  },
+  {
+   "bytes": 292,
+   "detail": "neg_str",
+   "family": "literal_init_error",
+   "files": [
+    {
+     "lines": [
+      [
+       395,
+       396
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parser.py"
+    }
+   ],
+   "id": "h037",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parser.py#0"
+   ],
+   "sha256": "1a912c1532f9e828c0c86cb6658f3aca5644eb8050e7fed019233513ccddb063",
+   "tags": []
+  },
+  {
+   "bytes": 996,
+   "detail": "binary_gz",
+   "family": "malformed",
+   "files": [
+    {
+     "lines": [],
+     "op": "binary",
+     "path": "tests/fixtures/optimizer/tpc-ds/warehouse.csv.gz"
+    }
+   ],
+   "id": "h038",
+   "labellable": true,
+   "regions": [
+    "tests/fixtures/optimizer/tpc-ds/warehouse.csv.gz"
+   ],
+   "sha256": "6e86800269929d206143e941e8da356fc4752485cc1eefe0a89be366dd363851",
+   "tags": []
+  },
+  {
+   "bytes": 277,
+   "detail": "fixture_json",
+   "family": "test_edit",
+   "files": [
+    {
+     "lines": [
+      [
+       5338,
+       5339
+      ]
+     ],
+     "op": "modify",
+     "path": "tests/fixtures/jsonpath/cts.json"
+    }
+   ],
+   "id": "h039",
+   "labellable": true,
+   "regions": [
+    "tests/fixtures/jsonpath/cts.json#10"
+   ],
+   "sha256": "814aea0cb6e6553334397e45fd4c307824a54a8f6982d9a906a0aac59852855b",
+   "tags": []
+  },
+  {
+   "bytes": 503,
+   "detail": "is:is not->!=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       202,
+       203
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/oracle.py"
+    }
+   ],
+   "id": "h040",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/oracle.py"
+   ],
+   "sha256": "dedf9b37a9c75bb413c2afdd1ff49e39554335bdf121e6e82fe12334f8ac2949",
+   "tags": []
+  },
+  {
+   "bytes": 658,
+   "detail": "lt:<-><=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       87,
+       88
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/hive.py"
+    }
+   ],
+   "id": "h041",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/hive.py"
+   ],
+   "sha256": "90c3fdbd75a9ed67c3067d08c9c08ddce0bcb2f436222dde50fcd9cb5b140b37",
+   "tags": []
+  },
+  {
+   "bytes": 367,
+   "detail": "copy:copy=False->True",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       627,
+       628
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h042",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#1"
+   ],
+   "sha256": "b5b7780b5563288fe813c7ea7dc9aa84452b4ab9c954547ffc1f91c70c5917e8",
+   "tags": []
+  },
+  {
+   "bytes": 494,
+   "detail": "in:not in->in",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       33,
+       34
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/exasol.py"
+    }
+   ],
+   "id": "h043",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/exasol.py"
+   ],
+   "sha256": "175c0d13c25b60e532fb94bff360b78490d29e6c8f9aa7d79ecaa285d99dba0e",
+   "tags": []
+  },
+  {
+   "bytes": 447,
+   "detail": "module_table_mutate",
+   "family": "shared_state",
+   "files": [
+    {
+     "lines": [
+      [
+       2317,
+       2317
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/dialects/dialect.py"
+    }
+   ],
+   "id": "h044",
+   "labellable": true,
+   "regions": [
+    "sqlglot/dialects/dialect.py#4"
+   ],
+   "sha256": "8c32123eae3ac5af5c16d71f356de3e67add5b10151b83b3bca950375e3e96f9",
+   "tags": []
+  },
+  {
+   "bytes": 966,
+   "detail": "comment+m0",
+   "family": "compound_mixed",
+   "files": [
+    {
+     "lines": [
+      [
+       78,
+       79
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/doris.py"
+    },
+    {
+     "lines": [
+      [
+       69,
+       69
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/starrocks.py"
+    }
+   ],
+   "id": "h045",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/starrocks.py",
+    "sqlglot/parsers/doris.py"
+   ],
+   "sha256": "bd3a09ef63c584f94a2c56200303a816cdcd0ad46774390a6653669e55d30261",
+   "tags": []
+  },
+  {
+   "bytes": 473,
+   "detail": "default_arg",
+   "family": "registry",
+   "files": [
+    {
+     "lines": [
+      [
+       8956,
+       8957
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parser.py"
+    }
+   ],
+   "id": "h046",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parser.py#17"
+   ],
+   "sha256": "8646c292d1836f37f7518c7682e4f6ea437487010379a9b537da625c2887ef35",
+   "tags": []
+  },
+  {
+   "bytes": 588,
+   "detail": "eq:==->!=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       81,
+       82
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/athena.py"
+    }
+   ],
+   "id": "h047",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/athena.py"
+   ],
+   "sha256": "74233b95343d72b83190474c73fde8ed995bbaf3f06c88b169d8e9ac100edde6",
+   "tags": []
+  },
+  {
+   "bytes": 571,
+   "detail": "-",
+   "family": "token_flip",
+   "files": [
+    {
+     "lines": [
+      [
+       103,
+       104
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/snowflake.py"
+    }
+   ],
+   "id": "h048",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/snowflake.py"
+   ],
+   "sha256": "9ff6fa1d07ecb4b2fa3b2df5a4345aa0635069f22b05a78810624901bd293a22",
+   "tags": []
+  },
+  {
+   "bytes": 573,
+   "detail": "copy:copy=False->True",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       40,
+       41
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/prql.py"
+    }
+   ],
+   "id": "h049",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/prql.py"
+   ],
+   "sha256": "307358f8c8609786a73d3975d6a66a599d499871245425f03cb8c8ca867d976b",
+   "tags": []
+  },
+  {
+   "bytes": 446,
+   "detail": "in:in->not in",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       53,
+       54
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/python.py"
+    }
+   ],
+   "id": "h050",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/python.py"
+   ],
+   "sha256": "3fa0e51b36364971209e3d80b7ea99752c6c3f3476f6b253db1fda57145f771c",
+   "tags": []
+  },
+  {
+   "bytes": 605,
+   "detail": "-",
+   "family": "cmp_swap",
+   "files": [
+    {
+     "lines": [
+      [
+       448,
+       449
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/optimizer/pushdown_projections.py"
+    }
+   ],
+   "id": "h051",
+   "labellable": true,
+   "regions": [
+    "sqlglot/optimizer/pushdown_projections.py"
+   ],
+   "sha256": "92f3f67f183799b6f6ffd4059c5ec7b1dbe28514ae43748f04563e7d24aaa0dd",
+   "tags": []
+  },
+  {
+   "bytes": 337,
+   "detail": "raise_branch",
+   "family": "runtime_error",
+   "files": [
+    {
+     "lines": [
+      [
+       1118,
+       1118
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/expressions/core.py"
+    }
+   ],
+   "id": "h052",
+   "labellable": true,
+   "regions": [
+    "sqlglot/expressions/core.py#2"
+   ],
+   "sha256": "e8a64c9c4b5c5b076a406f5d9fc10ca396f21d8ab74e52955c71fa53b9ddd638",
+   "tags": []
+  },
+  {
+   "bytes": 465,
+   "detail": "loop_continue",
+   "family": "insert_branch",
+   "files": [
+    {
+     "lines": [
+      [
+       10774,
+       10774
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parser.py"
+    }
+   ],
+   "id": "h053",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parser.py#21"
+   ],
+   "sha256": "fc1ab9c70213dce3890ed73713ac88959d413d04534ac203a790a792c3c5639e",
+   "tags": []
+  },
+  {
+   "bytes": 369,
+   "detail": "not:not->(removed)",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       18,
+       19
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/dax.py"
+    }
+   ],
+   "id": "h054",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/dax.py"
+   ],
+   "sha256": "f2e52bb79a9957769b386cd67c16e2a83cd4c1da255f788e23a5fb71080ad67c",
+   "tags": []
+  },
+  {
+   "bytes": 530,
+   "detail": "set_remove",
+   "family": "class_table",
+   "files": [
+    {
+     "lines": [
+      [
+       358,
+       359
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/snowflake.py"
+    }
+   ],
+   "id": "h055",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/snowflake.py"
+   ],
+   "sha256": "5adf86323c323cc43536d88063b8cb35a47e9f2af6c506821a7e169c0c52750c",
+   "tags": []
+  },
+  {
+   "bytes": 17780,
+   "detail": "shadow_pkg_copy",
+   "family": "file_ops",
+   "files": [
+    {
+     "lines": [],
+     "op": "add",
+     "path": "sqlglot/planner/__init__.py",
+     "shadows": "sqlglot/planner.py"
+    }
+   ],
+   "id": "h056",
+   "labellable": true,
+   "regions": [
+    "sqlglot/planner.py",
+    "sqlglot/planner/__init__.py"
+   ],
+   "sha256": "dd74c39ea13fbd992f6c7f1863dd8ff052513fad78e43d371c920f239b1ae2bc",
+   "tags": []
+  },
+  {
+   "bytes": 575,
+   "detail": "copy:copy=False->True",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       135,
+       136
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/prql.py"
+    }
+   ],
+   "id": "h057",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/prql.py"
+   ],
+   "sha256": "1768962d1d9fcfa1f2ac934dccb925bad25355fd9ba45d0866ab307b8db51eaf",
+   "tags": []
+  },
+  {
+   "bytes": 232,
+   "detail": "pyproject_python_classes",
+   "family": "hook_config",
+   "files": [
+    {
+     "lines": [
+      [
+       52,
+       52
+      ]
+     ],
+     "op": "modify",
+     "path": "pyproject.toml"
+    }
+   ],
+   "id": "h058",
+   "labellable": true,
+   "regions": [
+    "pyproject.toml"
+   ],
+   "sha256": "7509ce1df585b1a34c1e1b92b0684d4a4467ba94f39c556a1fd6bb4ef7b70406",
+   "tags": []
+  },
+  {
+   "bytes": 576,
+   "detail": "copy:copy=False->True",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       43,
+       44
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/prql.py"
+    }
+   ],
+   "id": "h059",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/prql.py"
+   ],
+   "sha256": "507842dc2a853eb43991c0e617b73242f6e1321e2a8ecea378d816a0052492e9",
+   "tags": []
+  },
+  {
+   "bytes": 341,
+   "detail": "line_shift_top",
+   "family": "metadata",
+   "files": [
+    {
+     "lines": [
+      [
+       7,
+       7
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/typing/__init__.py"
+    }
+   ],
+   "id": "h060",
+   "labellable": true,
+   "regions": [
+    "sqlglot/typing/__init__.py"
+   ],
+   "sha256": "f7cb0e4fda3edee76f784c485caea2de19e4bb01b6190e71d138764d760d7d90",
+   "tags": []
+  },
+  {
+   "bytes": 510,
+   "detail": "sorted->list",
+   "family": "hash_order",
+   "files": [
+    {
+     "lines": [
+      [
+       259,
+       260
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/optimizer/pushdown_predicates.py"
+    }
+   ],
+   "id": "h061",
+   "labellable": true,
+   "regions": [
+    "sqlglot/optimizer/pushdown_predicates.py"
+   ],
+   "sha256": "e48ab9d453c7b2333f89754e3fe394b840aad5d388d934345c5929426f10f7a4",
+   "tags": []
+  },
+  {
+   "bytes": 322,
+   "detail": "class_rename",
+   "family": "registry",
+   "files": [
+    {
+     "lines": [
+      [
+       1993,
+       1994
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/expressions/query.py"
+    }
+   ],
+   "id": "h062",
+   "labellable": true,
+   "regions": [
+    "sqlglot/expressions/query.py#3"
+   ],
+   "sha256": "da02995907a6f7f72f95701cd6977b1f62390394349e0592a55248b3d0d801d0",
+   "tags": []
+  },
+  {
+   "bytes": 462,
+   "detail": "docstring_text",
+   "family": "metadata",
+   "files": [
+    {
+     "lines": [
+      [
+       593,
+       594
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/lineage.py"
+    }
+   ],
+   "id": "h063",
+   "labellable": true,
+   "regions": [
+    "sqlglot/lineage.py"
+   ],
+   "sha256": "ff8aff1960e3d81d0f555a1629a55cba5eff7b5676f7a80547b310d919983748",
+   "tags": []
+  },
+  {
+   "bytes": 466,
+   "detail": "is:is->==",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       1114,
+       1115
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/snowflake.py"
+    }
+   ],
+   "id": "h064",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/snowflake.py"
+   ],
+   "sha256": "93395d7edcbc0bd43bc751d4416a7560b54b6ccf319a3bd16ee6b9526ebcbd5b",
+   "tags": []
+  },
+  {
+   "bytes": 411,
+   "detail": "plain_unified",
+   "family": "malformed",
+   "files": [
+    {
+     "lines": [
+      [
+       78,
+       79
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/time.py"
+    }
+   ],
+   "id": "h065",
+   "labellable": true,
+   "regions": [
+    "sqlglot/time.py"
+   ],
+   "sha256": "18937dcbb223cd59576684524575fa7035573644de95dce75ee25022bbf0435d",
+   "tags": []
+  },
+  {
+   "bytes": 411,
+   "detail": "is:is not->!=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       225,
+       226
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/exasol.py"
+    }
+   ],
+   "id": "h066",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/exasol.py"
+   ],
+   "sha256": "5a8496535fc213e61632e3b24d4b0504253226a43e16de7e7813e74f1bc33edf",
+   "tags": []
+  },
+  {
+   "bytes": 678,
+   "detail": "lt:>->>=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       86,
+       87
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/hive.py"
+    }
+   ],
+   "id": "h067",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/hive.py"
+   ],
+   "sha256": "2fa8ef458923d7845876d887218c470f384dc1aff12d7e4359855beeb06b5078",
+   "tags": []
+  },
+  {
+   "bytes": 138,
+   "detail": "new_top_module",
+   "family": "file_ops",
+   "files": [
+    {
+     "lines": [],
+     "op": "add",
+     "path": "tests/br_harbor.py"
+    }
+   ],
+   "id": "h068",
+   "labellable": true,
+   "regions": [
+    "tests/br_harbor.py"
+   ],
+   "sha256": "967f19fece72097f2fb125b38cb27dc7831269aaaa955524c3eb2248d4b3a57b",
+   "tags": []
+  },
+  {
+   "bytes": 278,
+   "detail": "no_eol_remove",
+   "family": "malformed",
+   "files": [
+    {
+     "lines": [
+      [
+       48,
+       49
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/dialects/spark2.py"
+    }
+   ],
+   "id": "h069",
+   "labellable": true,
+   "regions": [
+    "sqlglot/dialects/spark2.py"
+   ],
+   "sha256": "e457f41f5641f9ee69aefdea7022ad858ea3ed1d1cae5d29ae750bfaf6c5d91b",
+   "tags": []
+  },
+  {
+   "bytes": 432,
+   "detail": "docs_text",
+   "family": "metadata",
+   "files": [
+    {
+     "lines": [
+      [
+       209,
+       209
+      ]
+     ],
+     "op": "modify",
+     "path": "posts/sql_diff.md"
+    }
+   ],
+   "id": "h070",
+   "labellable": true,
+   "regions": [
+    "posts/sql_diff.md"
+   ],
+   "sha256": "c64b5c38e27be1e3df9df7382e99a575bfc538708d5752f51bdd509eb63ce45e",
+   "tags": []
+  },
+  {
+   "bytes": 524,
+   "detail": "boolop:and->or",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       44,
+       45
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/dax.py"
+    }
+   ],
+   "id": "h071",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/dax.py"
+   ],
+   "sha256": "03120bc8fa93378c874fc4aa648d6dcf6fed04286aeba72c71fb71045b62c1a7",
+   "tags": []
+  },
+  {
+   "bytes": 568,
+   "detail": "eq:==->!=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       49,
+       50
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/materialize.py"
+    }
+   ],
+   "id": "h072",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/materialize.py"
+   ],
+   "sha256": "17704eee54ef7c207d6e7dec5faf18ed6940b7f4efbf2ae9b128b9aa82d48683",
+   "tags": []
+  },
+  {
+   "bytes": 352,
+   "detail": "-",
+   "family": "class_literal",
+   "files": [
+    {
+     "lines": [
+      [
+       723,
+       724
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generator.py"
+    }
+   ],
+   "id": "h073",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generator.py#1"
+   ],
+   "sha256": "c565ec00771203867b52220bf00373fdcbddf4a3d5262e7644da3aad76b763e5",
+   "tags": []
+  },
+  {
+   "bytes": 295,
+   "detail": "doctest_expect",
+   "family": "metadata",
+   "files": [
+    {
+     "lines": [
+      [
+       17,
+       18
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/time.py"
+    }
+   ],
+   "id": "h074",
+   "labellable": true,
+   "regions": [
+    "sqlglot/time.py"
+   ],
+   "sha256": "ecb7ba9d54ea60a85f1cc51dd39a151f78b11f74849e6bfe03876a7925234ef6",
+   "tags": []
+  },
+  {
+   "bytes": 1000,
+   "detail": "multi_hunk",
+   "family": "malformed",
+   "files": [
+    {
+     "lines": [
+      [
+       543,
+       544
+      ],
+      [
+       634,
+       634
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/dialects/dialect.py"
+    }
+   ],
+   "id": "h075",
+   "labellable": true,
+   "regions": [
+    "sqlglot/dialects/dialect.py#1"
+   ],
+   "sha256": "70e119bfefea0809de53fea78ceaa7a3b159ec609d0bb0d917b25400d5723a15",
+   "tags": []
+  },
+  {
+   "bytes": 336,
+   "detail": "line",
+   "family": "comment",
+   "files": [
+    {
+     "lines": [
+      [
+       480,
+       480
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/clickhouse.py"
+    }
+   ],
+   "id": "h076",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/clickhouse.py"
+   ],
+   "sha256": "9ee844beec0fb3b6b98b6e044e48a395666cafb409827dd5486133f69fcc9c1b",
+   "tags": []
+  },
+  {
+   "bytes": 581,
+   "detail": "not:not->(removed)",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       339,
+       340
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/teradata.py"
+    }
+   ],
+   "id": "h077",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/teradata.py"
+   ],
+   "sha256": "a203fdb0ffcbedb0de54f6228e0521cce0a6e4a584aed9f97c8331599fcf931d",
+   "tags": []
+  },
+  {
+   "bytes": 351,
+   "detail": "unhashable_dict",
+   "family": "literal_init_error",
+   "files": [
+    {
+     "lines": [
+      [
+       124,
+       125
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/dremio.py"
+    }
+   ],
+   "id": "h078",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/dremio.py"
+   ],
+   "sha256": "47ff6baa3ba820146883af81e6cf768a01fe3ea99811dd40f957bddf7d4e0e7b",
+   "tags": []
+  },
+  {
+   "bytes": 412,
+   "detail": "copy:copy=False->True",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       618,
+       619
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h079",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#1"
+   ],
+   "sha256": "51af447ee797ba6b3098d1cf9c1b961bf8c8ec4da38dccee15744679260cbc37",
+   "tags": []
+  },
+  {
+   "bytes": 589,
+   "detail": "lt:>->>=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       97,
+       98
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/clickhouse.py"
+    }
+   ],
+   "id": "h080",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/clickhouse.py"
+   ],
+   "sha256": "8d315c859758daba6f58288216afbc7b6ad2a54d057ab23adf4f8f3dc2bb207e",
+   "tags": []
+  },
+  {
+   "bytes": 536,
+   "detail": "loop_break",
+   "family": "insert_branch",
+   "files": [
+    {
+     "lines": [
+      [
+       143,
+       143
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/snowflake.py"
+    }
+   ],
+   "id": "h081",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/snowflake.py"
+   ],
+   "sha256": "58f9772c447acafe59722399d2a57e30ee6c13f5c9dd92172f288c6411a9e80b",
+   "tags": []
+  },
+  {
+   "bytes": 498,
+   "detail": "in:in->not in",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       19,
+       20
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/oracle.py"
+    }
+   ],
+   "id": "h082",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/oracle.py"
+   ],
+   "sha256": "d1e31e5745f26e45d1a0cb2684fe35496bc69a82d0643479e210b52905618045",
+   "tags": []
+  },
+  {
+   "bytes": 407,
+   "detail": "eq:==->!=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       39,
+       40
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/clickhouse.py"
+    }
+   ],
+   "id": "h083",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/clickhouse.py"
+   ],
+   "sha256": "c98c98ce20a0c6c734a354383eeb6686312253ac58fe3622032dabaef254227d",
+   "tags": []
+  },
+  {
+   "bytes": 427,
+   "detail": "loop_continue",
+   "family": "insert_branch",
+   "files": [
+    {
+     "lines": [
+      [
+       51,
+       51
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/lineage.py"
+    }
+   ],
+   "id": "h084",
+   "labellable": true,
+   "regions": [
+    "sqlglot/lineage.py"
+   ],
+   "sha256": "5c879211b55bbe15245525a5cd24702f08c9dd630e9f07aa0628cdcb4dfedc05",
+   "tags": []
+  },
+  {
+   "bytes": 613,
+   "detail": "lt:>->>=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       4132,
+       4133
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h085",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#8"
+   ],
+   "sha256": "ae7318b4e2830c9741e786ca2affb65ad7a6af8a6bf784fe50c4db6f9adcd46a",
+   "tags": []
+  },
+  {
+   "bytes": 399,
+   "detail": "str",
+   "family": "class_table",
+   "files": [
+    {
+     "lines": [
+      [
+       14,
+       15
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/dialects/dax.py"
+    }
+   ],
+   "id": "h086",
+   "labellable": true,
+   "regions": [
+    "sqlglot/dialects/dax.py"
+   ],
+   "sha256": "688cf1b46aa4ae850a166c2692713fa20789f5e4e9538d74a23636ccb732ed1c",
+   "tags": []
+  },
+  {
+   "bytes": 485,
+   "detail": "kwbool:advance=False->True",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       513,
+       514
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/duckdb.py"
+    }
+   ],
+   "id": "h087",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/duckdb.py"
+   ],
+   "sha256": "bbe616e54c7df70f954515f80d0ef1c405d98c81ef8a19ea6e5a895e980e1495",
+   "tags": []
+  },
+  {
+   "bytes": 592,
+   "detail": "lt:>->>=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       336,
+       337
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/duckdb.py"
+    }
+   ],
+   "id": "h088",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/duckdb.py"
+   ],
+   "sha256": "0ab671448f3932c8d79e50c7a7746eda3fe45ad48ad91ee78b19bd461094dd2c",
+   "tags": []
+  },
+  {
+   "bytes": 9038,
+   "detail": "delete_module",
+   "family": "file_ops",
+   "files": [
+    {
+     "lines": [],
+     "op": "delete",
+     "path": "sqlglot/optimizer/canonicalize.py"
+    }
+   ],
+   "id": "h089",
+   "labellable": true,
+   "regions": [
+    "sqlglot/optimizer/canonicalize.py"
+   ],
+   "sha256": "e803d774a30c8ceb1371e58076f801c926464fa7f6032704e232cca0160ab5ed",
+   "tags": []
+  },
+  {
+   "bytes": 455,
+   "detail": "kwbool:force=True->False",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       561,
+       562
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/duckdb.py"
+    }
+   ],
+   "id": "h090",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/duckdb.py"
+   ],
+   "sha256": "38c6fd32654b7606e4b7ac53993f5dc9eba96c16a57d82a9e5960c34c6eb107b",
+   "tags": []
+  },
+  {
+   "bytes": 626,
+   "detail": "decorator_arg",
+   "family": "registry",
+   "files": [
+    {
+     "lines": [
+      [
+       680,
+       681
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h091",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#1"
+   ],
+   "sha256": "39e8aca9455675b1c23ac9124b9f42c5a0247963128222558b4a90ac09c95d23",
+   "tags": []
+  },
+  {
+   "bytes": 376,
+   "detail": "is:is->==",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       180,
+       181
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/tsql.py"
+    }
+   ],
+   "id": "h092",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/tsql.py"
+   ],
+   "sha256": "42155137b3c07087799daa77736f9ae4ab42bd19f64326091808709aa59a4f2d",
+   "tags": []
+  },
+  {
+   "bytes": 876,
+   "detail": "docstring+raise",
+   "family": "compound_mixed",
+   "files": [
+    {
+     "lines": [
+      [
+       5224,
+       5224
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parser.py"
+    },
+    {
+     "lines": [
+      [
+       706,
+       707
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h093",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#1",
+    "sqlglot/parser.py#10"
+   ],
+   "sha256": "a1c9957e9fca1703d6e98b5beb7aa3d7a387506159023775c82e3e0916e7e2da",
+   "tags": []
+  },
+  {
+   "bytes": 431,
+   "detail": "raise_entry_rare",
+   "family": "runtime_error",
+   "files": [
+    {
+     "lines": [
+      [
+       164,
+       164
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/doris.py"
+    }
+   ],
+   "id": "h094",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/doris.py"
+   ],
+   "sha256": "727f3240b9ad83c4901490ca2a392c8d1fbc612e93d9e07a411814c2e2c988eb",
+   "tags": []
+  },
+  {
+   "bytes": 457,
+   "detail": "mode+token",
+   "family": "compound_mixed",
+   "files": [
+    {
+     "lines": [
+      [
+       181,
+       182
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/clickhouse.py"
+    },
+    {
+     "lines": [],
+     "op": "mode",
+     "path": "sqlglot/optimizer/canonicalize_internal_names.py"
+    }
+   ],
+   "id": "h095",
+   "labellable": true,
+   "regions": [
+    "sqlglot/optimizer/canonicalize_internal_names.py",
+    "sqlglot/parsers/clickhouse.py"
+   ],
+   "sha256": "5be19c3153ed759cc663aea7f1dfcba5e9596f5b46de17fa8c3b38383f701686",
+   "tags": []
+  },
+  {
+   "bytes": 638,
+   "detail": "inline",
+   "family": "comment",
+   "files": [
+    {
+     "lines": [
+      [
+       328,
+       329
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/expressions/dml.py"
+    }
+   ],
+   "id": "h096",
+   "labellable": true,
+   "regions": [
+    "sqlglot/expressions/dml.py#0"
+   ],
+   "sha256": "d664a588c716722281ce27f027f19dcbb7914b2e279f9dd1a1e3b5d085e02810",
+   "tags": []
+  },
+  {
+   "bytes": 470,
+   "detail": "copy:copy=False->True",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       82,
+       83
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/prql.py"
+    }
+   ],
+   "id": "h097",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/prql.py"
+   ],
+   "sha256": "1e9d5ccf6378280080a5d41e6f2dcd360e4724273792ed6c40188d7eb768069f",
+   "tags": []
+  },
+  {
+   "bytes": 664,
+   "detail": "copy:copy=False->True",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       73,
+       74
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/singlestore.py"
+    }
+   ],
+   "id": "h098",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/singlestore.py"
+   ],
+   "sha256": "d3ef2db38e7f7cd62fb47eea95d0735285287fb79e09f52cee6283b87b453d4e",
+   "tags": []
+  },
+  {
+   "bytes": 387,
+   "detail": "raise_entry_common",
+   "family": "runtime_error",
+   "files": [
+    {
+     "lines": [
+      [
+       1101,
+       1101
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/expressions/builders.py"
+    }
+   ],
+   "id": "h099",
+   "labellable": true,
+   "regions": [
+    "sqlglot/expressions/builders.py#2"
+   ],
+   "sha256": "891a3ddb25d7fc3668f5045052036412cacf1509c9fd47f94c729f64dd62cc63",
+   "tags": []
+  },
+  {
+   "bytes": 661,
+   "detail": "copy:copy=False->True",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       1153,
+       1154
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h100",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#2"
+   ],
+   "sha256": "43aa5716aca024276bc3f75bdf56ce96a1398379508aefeb6ec66dc7ff89aa33",
+   "tags": []
+  },
+  {
+   "bytes": 413,
+   "detail": "lt:<-><=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       126,
+       127
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/exasol.py"
+    }
+   ],
+   "id": "h101",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/exasol.py"
+   ],
+   "sha256": "d16d0aaad6d5e85f582ae4c41d38e927d602f686556d044aab38e0bba57e522c",
+   "tags": []
+  },
+  {
+   "bytes": 177,
+   "detail": "new_sqlglot_module_raises",
+   "family": "file_ops",
+   "files": [
+    {
+     "lines": [],
+     "op": "add",
+     "path": "sqlglot/br_orbit.py"
+    }
+   ],
+   "id": "h102",
+   "labellable": true,
+   "regions": [
+    "sqlglot/br_orbit.py"
+   ],
+   "sha256": "3a04373fd93754f6a33c02deccc77a8e312ccc7829aac7db7f7e3e8baa2128c8",
+   "tags": []
+  },
+  {
+   "bytes": 506,
+   "detail": "unpack_remove",
+   "family": "class_table",
+   "files": [
+    {
+     "lines": [
+      [
+       471,
+       472
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/tsql.py"
+    }
+   ],
+   "id": "h103",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/tsql.py"
+   ],
+   "sha256": "ff79a5165e400c38699a93a4ba9f5182b13b3e2feb27010be2780ca0eaa6ce1e",
+   "tags": []
+  },
+  {
+   "bytes": 589,
+   "detail": "lt:<-><=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       506,
+       507
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/duckdb.py"
+    }
+   ],
+   "id": "h104",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/duckdb.py"
+   ],
+   "sha256": "6b5928b01f1dd295818ed8075e101d9886fe56823d14857ed7f739081719fe35",
+   "tags": []
+  },
+  {
+   "bytes": 473,
+   "detail": "-",
+   "family": "cmp_swap",
+   "files": [
+    {
+     "lines": [
+      [
+       196,
+       197
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/__init__.py"
+    }
+   ],
+   "id": "h105",
+   "labellable": true,
+   "regions": [
+    "sqlglot/__init__.py"
+   ],
+   "sha256": "eda2b703ade1551e296a4c8b9a44acb774298c596df66983722c245b235c8fa3",
+   "tags": []
+  },
+  {
+   "bytes": 516,
+   "detail": "lt:>->>=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       789,
+       790
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/clickhouse.py"
+    }
+   ],
+   "id": "h106",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/clickhouse.py"
+   ],
+   "sha256": "51e3b57ac3ca66dc0940586df49785b3df1ca6145143872f033d3dafb48e8872",
+   "tags": []
+  },
+  {
+   "bytes": 367,
+   "detail": "decorator_remove",
+   "family": "registry",
+   "files": [
+    {
+     "lines": [
+      [
+       8818,
+       8819
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parser.py"
+    }
+   ],
+   "id": "h107",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parser.py#17"
+   ],
+   "sha256": "b5768c0a8688047ecd865ae5f8e65f97dc826c3b5f5e8bf77692e4b4de48e0fc",
+   "tags": []
+  },
+  {
+   "bytes": 111,
+   "detail": "shadow_thirdparty",
+   "family": "file_ops",
+   "files": [
+    {
+     "lines": [],
+     "op": "add",
+     "path": "pandas.py"
+    }
+   ],
+   "id": "h108",
+   "labellable": true,
+   "regions": [
+    "pandas.py"
+   ],
+   "sha256": "29c6ebcfdb9659e7db31f2b9415d294941d1d0b41c35077a34969f3a7706f8d2",
+   "tags": []
+  },
+  {
+   "bytes": 343,
+   "detail": "entry_raise",
+   "family": "insert_branch",
+   "files": [
+    {
+     "lines": [
+      [
+       351,
+       351
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/planner.py"
+    }
+   ],
+   "id": "h109",
+   "labellable": true,
+   "regions": [
+    "sqlglot/planner.py"
+   ],
+   "sha256": "06e943018e7ee3283f72d66b8fe439c5035dd45a616c29b7538c479ea30e6486",
+   "tags": []
+  },
+  {
+   "bytes": 553,
+   "detail": "eq:!=->==",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       113,
+       114
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/databricks.py"
+    }
+   ],
+   "id": "h110",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/databricks.py"
+   ],
+   "sha256": "877943d58e20d2d64d51e2a00c414c505bdfaae47945037a816df478923740df",
+   "tags": []
+  },
+  {
+   "bytes": 341,
+   "detail": "helpers_delete_line",
+   "family": "test_edit",
+   "files": [
+    {
+     "lines": [
+      [
+       45,
+       46
+      ]
+     ],
+     "op": "modify",
+     "path": "tests/helpers.py"
+    }
+   ],
+   "id": "h111",
+   "labellable": true,
+   "regions": [
+    "tests/helpers.py#1"
+   ],
+   "sha256": "f5da2d9ee51bbce305a2e7b5f23501ffba55562279984ae0afd1d1d07ab2ebd6",
+   "tags": []
+  },
+  {
+   "bytes": 910,
+   "detail": "linked_return",
+   "family": "compound_eq",
+   "files": [
+    {
+     "lines": [
+      [
+       1475,
+       1476
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generator.py",
+     "role": "cmp_swap"
+    },
+    {
+     "lines": [
+      [
+       1046,
+       1047
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/snowflake.py",
+     "role": "producer:createable_sql"
+    }
+   ],
+   "id": "h112",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generator.py#2",
+    "sqlglot/generators/snowflake.py"
+   ],
+   "sha256": "f0d25ea9507ea6e2072622ea0bcf0166b8b2dc0e0181b839567f58fa74157836",
+   "tags": []
+  },
+  {
+   "bytes": 322,
+   "detail": "lt:<-><=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       128,
+       129
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/dialects/athena.py"
+    }
+   ],
+   "id": "h113",
+   "labellable": true,
+   "regions": [
+    "sqlglot/dialects/athena.py"
+   ],
+   "sha256": "9555ab16a2868880c23ea180343011025784823d36600b213e197d1e6d648b03",
+   "tags": []
+  },
+  {
+   "bytes": 483,
+   "detail": "crash_exit",
+   "family": "runtime_error",
+   "files": [
+    {
+     "lines": [
+      [
+       95,
+       95
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/prql.py"
+    }
+   ],
+   "id": "h114",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/prql.py"
+   ],
+   "sha256": "bfad00917b9519ee7bd656db872c0912931f7a5badd937d3726a1065e506212c",
+   "tags": [
+    "crash"
+   ]
+  },
+  {
+   "bytes": 877,
+   "detail": "comment+token",
+   "family": "compound_mixed",
+   "files": [
+    {
+     "lines": [
+      [
+       8199,
+       8199
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parser.py"
+    },
+    {
+     "lines": [
+      [
+       2423,
+       2424
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/dialects/dialect.py"
+    }
+   ],
+   "id": "h115",
+   "labellable": true,
+   "regions": [
+    "sqlglot/dialects/dialect.py#4",
+    "sqlglot/parser.py#16"
+   ],
+   "sha256": "53ec2e37be0d4a00e0628b52a21e78da08f84ec6c0bf9e8bae84e6939d56effb",
+   "tags": []
+  },
+  {
+   "bytes": 241,
+   "detail": "new_dialect_module",
+   "family": "file_ops",
+   "files": [
+    {
+     "lines": [],
+     "op": "add",
+     "path": "sqlglot/dialects/brfjord.py"
+    }
+   ],
+   "id": "h116",
+   "labellable": true,
+   "regions": [
+    "sqlglot/dialects/brfjord.py"
+   ],
+   "sha256": "77b25f2c5675703e221ed7c265d7d78c710f4fb4126bee4d5028bfb150ef5014",
+   "tags": []
+  },
+  {
+   "bytes": 759,
+   "detail": "boolop:and->or",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       150,
+       151
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/databricks.py"
+    }
+   ],
+   "id": "h117",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/databricks.py"
+   ],
+   "sha256": "d6d61dc0b8e3b36f2ccc251be2cfd6ddc09d17d7d93677f2e0a5368cbe74c86a",
+   "tags": []
+  },
+  {
+   "bytes": 246,
+   "detail": "latin1_cookie",
+   "family": "malformed",
+   "files": [
+    {
+     "lines": [
+      [
+       1,
+       1
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/optimizer/resolver.py"
+    }
+   ],
+   "id": "h118",
+   "labellable": true,
+   "regions": [
+    "sqlglot/optimizer/resolver.py"
+   ],
+   "sha256": "1370f09555ceac1ddde42d12d057a82aa820786dd36bb61af997d62d9d1df304",
+   "tags": []
+  },
+  {
+   "bytes": 449,
+   "detail": "dict_remove",
+   "family": "class_table",
+   "files": [
+    {
+     "lines": [
+      [
+       669,
+       670
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parser.py"
+    }
+   ],
+   "id": "h119",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parser.py#1"
+   ],
+   "sha256": "e4c9493ececa89b0cec93444147242e396698db24debc74d3241413349c8179d",
+   "tags": []
+  },
+  {
+   "bytes": 480,
+   "detail": "not:not->(removed)",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       19,
+       20
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/dremio.py"
+    }
+   ],
+   "id": "h120",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/dremio.py"
+   ],
+   "sha256": "0af2f14b2f1651c1c73bf17dbcb17b84966cd76172c8484f922a106f3e943d71",
+   "tags": []
+  },
+  {
+   "bytes": 377,
+   "detail": "entry_return",
+   "family": "insert_branch",
+   "files": [
+    {
+     "lines": [
+      [
+       1480,
+       1480
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/snowflake.py"
+    }
+   ],
+   "id": "h121",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/snowflake.py"
+   ],
+   "sha256": "7387a0d3850ec7f0eea9ead76a751fda9572dd9df69ef32df6de53a1c57710b8",
+   "tags": []
+  },
+  {
+   "bytes": 543,
+   "detail": "copy:copy=False->True",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       609,
+       610
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/tsql.py"
+    }
+   ],
+   "id": "h122",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/tsql.py"
+   ],
+   "sha256": "b7b497afbd722f697f4e97e5bea5544385c6bd20dacb3180d0072485f03265fd",
+   "tags": []
+  },
+  {
+   "bytes": 404,
+   "detail": "while_true",
+   "family": "timeout",
+   "files": [
+    {
+     "lines": [
+      [
+       15,
+       15
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/dremio.py"
+    }
+   ],
+   "id": "h123",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/dremio.py"
+   ],
+   "sha256": "b98383ec6346b0972bf51de56b768b33dec5baa3817cbf80b90ced6ec8e8e99f",
+   "tags": [
+    "slow"
+   ]
+  },
+  {
+   "bytes": 189,
+   "detail": "conftest_reverse",
+   "family": "hook_config",
+   "files": [
+    {
+     "lines": [],
+     "op": "add",
+     "path": "conftest.py"
+    }
+   ],
+   "id": "h124",
+   "labellable": true,
+   "regions": [
+    "conftest.py"
+   ],
+   "sha256": "1bc1c8de64c63377004b1641ce1bd5313de48553b51fa50c0aa9738f53cfaa53",
+   "tags": []
+  },
+  {
+   "bytes": 403,
+   "detail": "test_collect_error",
+   "family": "test_edit",
+   "files": [
+    {
+     "lines": [
+      [
+       4,
+       4
+      ]
+     ],
+     "op": "modify",
+     "path": "tests/dialects/test_trino.py"
+    }
+   ],
+   "id": "h125",
+   "labellable": true,
+   "regions": [
+    "tests/dialects/test_trino.py"
+   ],
+   "sha256": "f153734a23f05622950212780b642283c6a384f95d17260d0de3c0ad7f2e48c2",
+   "tags": []
+  },
+  {
+   "bytes": 652,
+   "detail": "bool_flip",
+   "family": "class_table",
+   "files": [
+    {
+     "lines": [
+      [
+       540,
+       541
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generator.py"
+    }
+   ],
+   "id": "h126",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generator.py#1"
+   ],
+   "sha256": "9dba57f213368bdef6932a54f9eced912d06bf1931f4a00a6a16ad5f937df977",
+   "tags": []
+  },
+  {
+   "bytes": 643,
+   "detail": "wrong_context",
+   "family": "malformed",
+   "files": [
+    {
+     "lines": [
+      [
+       385,
+       386
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/starrocks.py"
+    }
+   ],
+   "id": "h127",
+   "labellable": false,
+   "regions": [
+    "sqlglot/generators/starrocks.py"
+   ],
+   "sha256": "321e478680ccf22310e3efe66408611e3074d9e986c504064927d7a8def86cdf",
+   "tags": []
+  },
+  {
+   "bytes": 588,
+   "detail": "test_skip",
+   "family": "test_edit",
+   "files": [
+    {
+     "lines": [
+      [
+       372,
+       372
+      ]
+     ],
+     "op": "modify",
+     "path": "tests/test_anonymize.py"
+    }
+   ],
+   "id": "h128",
+   "labellable": true,
+   "regions": [
+    "tests/test_anonymize.py"
+   ],
+   "sha256": "c35c03a37149db547dd49afd509786f2711e5a3447593a3a8b60f1e1da35b41b",
+   "tags": []
+  },
+  {
+   "bytes": 605,
+   "detail": "lt:>=->>",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       3328,
+       3329
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h129",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#6"
+   ],
+   "sha256": "5a4fc9132a544c415fef0a9d3a5c2ca377eca2c583dceba74d7b0fed342f4461",
+   "tags": []
+  },
+  {
+   "bytes": 741,
+   "detail": "-",
+   "family": "token_flip",
+   "files": [
+    {
+     "lines": [
+      [
+       314,
+       315
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/clickhouse.py"
+    }
+   ],
+   "id": "h130",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/clickhouse.py"
+   ],
+   "sha256": "8a890cd7e140e2d6cc6e6405c9d55aa00345402553972fb3b2135d5094bd5d86",
+   "tags": []
+  },
+  {
+   "bytes": 399,
+   "detail": "lazy_missing",
+   "family": "import_edit",
+   "files": [
+    {
+     "lines": [
+      [
+       6864,
+       6864
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generator.py"
+    }
+   ],
+   "id": "h131",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generator.py#13"
+   ],
+   "sha256": "8f4df3af5e10068409098cf487a23ec5d93b0e0a94aae0aa03bd9e2db7a0fa62",
+   "tags": []
+  },
+  {
+   "bytes": 382,
+   "detail": "tuple_list_key",
+   "family": "literal_init_error",
+   "files": [
+    {
+     "lines": [
+      [
+       705,
+       706
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generator.py"
+    }
+   ],
+   "id": "h132",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generator.py#1"
+   ],
+   "sha256": "3cd68485e7e9c11ad5909754b34855c6f4705702b07f47765cafe900d97f3ce8",
+   "tags": []
+  },
+  {
+   "bytes": 469,
+   "detail": "eq:==->!=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       57,
+       58
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/exasol.py"
+    }
+   ],
+   "id": "h133",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/exasol.py"
+   ],
+   "sha256": "f95d7a4285265129a3000e2a5361efe600b1c79187e9dc72e873c8c479a0a7e0",
+   "tags": []
+  },
+  {
+   "bytes": 859,
+   "detail": "linked_return",
+   "family": "compound_eq",
+   "files": [
+    {
+     "lines": [
+      [
+       331,
+       332
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/teradata.py",
+     "role": "cmp_swap"
+    },
+    {
+     "lines": [
+      [
+       352,
+       353
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/oracle.py",
+     "role": "producer:_parse_column_ops"
+    }
+   ],
+   "id": "h134",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/oracle.py",
+    "sqlglot/parsers/teradata.py"
+   ],
+   "sha256": "df60fe1b3be56807f37ae61c08044558fb037789bf650476bd3e3c216f5a6272",
+   "tags": []
+  },
+  {
+   "bytes": 927,
+   "detail": "linked_return",
+   "family": "compound_eq",
+   "files": [
+    {
+     "lines": [
+      [
+       123,
+       124
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/exasol.py",
+     "role": "cmp_swap"
+    },
+    {
+     "lines": [
+      [
+       1212,
+       1213
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generator.py",
+     "role": "producer:sql"
+    }
+   ],
+   "id": "h135",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generator.py#2",
+    "sqlglot/generators/exasol.py"
+   ],
+   "sha256": "ee20693ecc0cd99160bf775f9e043b353e52a7f86ed0f1724cda60a978fb1a0a",
+   "tags": []
+  },
+  {
+   "bytes": 400,
+   "detail": "middle_return",
+   "family": "insert_branch",
+   "files": [
+    {
+     "lines": [
+      [
+       4024,
+       4024
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h136",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#8"
+   ],
+   "sha256": "89b921b5f8ecb22aaf6d4af2eb823ac0619bfe2cb9b9af9f1d77b961e968e694",
+   "tags": []
+  },
+  {
+   "bytes": 546,
+   "detail": "is:is->==",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       189,
+       190
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/snowflake.py"
+    }
+   ],
+   "id": "h137",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/snowflake.py"
+   ],
+   "sha256": "fe7077f69e66ce6401d775c0d4241be8aca05961f452ffcb567fed30d43ce629",
+   "tags": []
+  },
+  {
+   "bytes": 346,
+   "detail": "unpack_remove",
+   "family": "class_table",
+   "files": [
+    {
+     "lines": [
+      [
+       13,
+       14
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/materialize.py"
+    }
+   ],
+   "id": "h138",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/materialize.py"
+   ],
+   "sha256": "cf1e5ce6bf8489735076e9420d165fdb40e53470d4c77341c707b2c726efd854",
+   "tags": []
+  },
+  {
+   "bytes": 361,
+   "detail": "loop_break",
+   "family": "insert_branch",
+   "files": [
+    {
+     "lines": [
+      [
+       429,
+       429
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/planner.py"
+    }
+   ],
+   "id": "h139",
+   "labellable": true,
+   "regions": [
+    "sqlglot/planner.py"
+   ],
+   "sha256": "b253ab8985e74c9b6cd055b74d40c55475daf49d717edbe8043000eab90a0edf",
+   "tags": []
+  },
+  {
+   "bytes": 632,
+   "detail": "blank+import",
+   "family": "compound_mixed",
+   "files": [
+    {
+     "lines": [
+      [
+       4,
+       5
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/hive.py"
+    },
+    {
+     "lines": [
+      [
+       2992,
+       2992
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generator.py"
+    }
+   ],
+   "id": "h140",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generator.py#5",
+    "sqlglot/generators/hive.py"
+   ],
+   "sha256": "54f9745cae81eb31f327915bb9504475116064643d537adf3ab7fe5b3b05e23f",
+   "tags": []
+  },
+  {
+   "bytes": 688,
+   "detail": "copy:copy=False->True",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       1149,
+       1150
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h141",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#2"
+   ],
+   "sha256": "65482a146588ef9f3b41855bbf27c8c9d855ac8251d394d6ab4c85a705eca226",
+   "tags": []
+  },
+  {
+   "bytes": 553,
+   "detail": "lt:>->>=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       4428,
+       4429
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h142",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#8"
+   ],
+   "sha256": "7d54f4048908e78341203463d899799289d75d14a57ff4a11bf56e553964a0ca",
+   "tags": []
+  },
+  {
+   "bytes": 515,
+   "detail": "crlf_patch",
+   "family": "malformed",
+   "files": [
+    {
+     "lines": [
+      [
+       195,
+       196
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/databricks.py"
+    }
+   ],
+   "id": "h143",
+   "labellable": false,
+   "regions": [
+    "sqlglot/generators/databricks.py"
+   ],
+   "sha256": "02e8c652768832a58ded0e493cad172b04acfc61203801068390007202930490",
+   "tags": []
+  },
+  {
+   "bytes": 268,
+   "detail": "remove_used",
+   "family": "import_edit",
+   "files": [
+    {
+     "lines": [
+      [
+       12,
+       13
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parser.py"
+    }
+   ],
+   "id": "h144",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parser.py#0"
+   ],
+   "sha256": "19c055467793d078e4587760589ea4ee20e2461b81fd9c3760842c77af3facc7",
+   "tags": []
+  },
+  {
+   "bytes": 590,
+   "detail": "delete_fixture_gz",
+   "family": "file_ops",
+   "files": [
+    {
+     "lines": [],
+     "op": "delete",
+     "path": "tests/fixtures/optimizer/tpc-ds/warehouse.csv.gz"
+    }
+   ],
+   "id": "h145",
+   "labellable": true,
+   "regions": [
+    "tests/fixtures/optimizer/tpc-ds/warehouse.csv.gz"
+   ],
+   "sha256": "1fa39d4b2fc5e46d86aa4a3308eaa7848fe379619e46d2830e1d9c6878eab115",
+   "tags": []
+  },
+  {
+   "bytes": 413,
+   "detail": "seq_remove",
+   "family": "class_table",
+   "files": [
+    {
+     "lines": [
+      [
+       907,
+       908
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/snowflake.py"
+    }
+   ],
+   "id": "h146",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/snowflake.py"
+   ],
+   "sha256": "2db855d6ec1f5460f8392dd15f8962f992729477d417fb2b3a8b886311373e62",
+   "tags": []
+  },
+  {
+   "bytes": 908,
+   "detail": "docstring+m0",
+   "family": "compound_mixed",
+   "files": [
+    {
+     "lines": [
+      [
+       706,
+       707
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    },
+    {
+     "lines": [
+      [
+       15,
+       16
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/doris.py"
+    }
+   ],
+   "id": "h147",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#1",
+    "sqlglot/parsers/doris.py"
+   ],
+   "sha256": "6841e7f2d3c0beb1554f84730a83fa8ebdae98d8fbedc124ea42c3350a6b3da8",
+   "tags": []
+  },
+  {
+   "bytes": 359,
+   "detail": "large_set_add",
+   "family": "class_table",
+   "files": [
+    {
+     "lines": [
+      [
+       944,
+       945
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parser.py"
+    }
+   ],
+   "id": "h148",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parser.py#1"
+   ],
+   "sha256": "d99328b85d71ce8bf96e5ddd5da62b2abb8f1c2bb7879ce69fd6f6c8715f075e",
+   "tags": []
+  },
+  {
+   "bytes": 465,
+   "detail": "after_if_return",
+   "family": "insert_branch",
+   "files": [
+    {
+     "lines": [
+      [
+       4066,
+       4066
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h149",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#8"
+   ],
+   "sha256": "599cb232c08f1a93d990b8496ec100985bcbfadcd58faa16c5cb751904d8f8bf",
+   "tags": []
+  },
+  {
+   "bytes": 660,
+   "detail": "key_to_list",
+   "family": "literal_init_error",
+   "files": [
+    {
+     "lines": [
+      [
+       759,
+       760
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generator.py"
+    }
+   ],
+   "id": "h150",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generator.py#1"
+   ],
+   "sha256": "a65cf60c90eadf4098648d83a812e43ec4910161c37d73f00fbd47d2de130c24",
+   "tags": []
+  },
+  {
+   "bytes": 721,
+   "detail": "format_patch_header",
+   "family": "malformed",
+   "files": [
+    {
+     "lines": [
+      [
+       2988,
+       2989
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generator.py"
+    }
+   ],
+   "id": "h151",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generator.py#5"
+   ],
+   "sha256": "4b90ae6151d4975d437ca8d05924353bc26f73ce3426b38ac422873d89fdef44",
+   "tags": []
+  },
+  {
+   "bytes": 593,
+   "detail": "lt:<=-><",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       540,
+       541
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/hive.py"
+    }
+   ],
+   "id": "h152",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/hive.py"
+   ],
+   "sha256": "04e7cc28a476457f01beb5bb76f0bad6073d4af780898c803841cb17c2621da7",
+   "tags": []
+  },
+  {
+   "bytes": 266,
+   "detail": "future_annotations",
+   "family": "metadata",
+   "files": [
+    {
+     "lines": [
+      [
+       1,
+       1
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/snowflake.py"
+    }
+   ],
+   "id": "h153",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/snowflake.py"
+   ],
+   "sha256": "4d677b752722593619d97db30dc10b594f75f70b2703bcbbfdd859851420b05c",
+   "tags": []
+  },
+  {
+   "bytes": 521,
+   "detail": "dict_add",
+   "family": "class_table",
+   "files": [
+    {
+     "lines": [
+      [
+       798,
+       798
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/snowflake.py"
+    }
+   ],
+   "id": "h154",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/snowflake.py"
+   ],
+   "sha256": "4f4c553246eb74a141e3dfbb1b4acf81fb94fbcafcd3797cee44e5a57c499e31",
+   "tags": []
+  },
+  {
+   "bytes": 572,
+   "detail": "alter_name",
+   "family": "import_edit",
+   "files": [
+    {
+     "lines": [
+      [
+       11,
+       12
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/optimizer/qualify_columns.py"
+    }
+   ],
+   "id": "h155",
+   "labellable": true,
+   "regions": [
+    "sqlglot/optimizer/qualify_columns.py#0"
+   ],
+   "sha256": "d65c73a5daba72f417523d4281ba7c7560d54e157d86ea1352c6e2d147f8a9e4",
+   "tags": []
+  },
+  {
+   "bytes": 136,
+   "detail": "pytest_ini",
+   "family": "hook_config",
+   "files": [
+    {
+     "lines": [],
+     "op": "add",
+     "path": "pytest.ini"
+    }
+   ],
+   "id": "h156",
+   "labellable": true,
+   "regions": [
+    "pytest.ini"
+   ],
+   "sha256": "c91e7fce40df0bad3caec920e1f1816d08c9b9834e4e0d69f8a1b1d49b1230e2",
+   "tags": []
+  },
+  {
+   "bytes": 451,
+   "detail": "lt:<-><=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       337,
+       338
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/snowflake.py"
+    }
+   ],
+   "id": "h157",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/snowflake.py"
+   ],
+   "sha256": "3b057c4d02afa620ba13d565b346cc45d356e11f9f04ebfe1651eda7f8f0ec3e",
+   "tags": []
+  },
+  {
+   "bytes": 317,
+   "detail": "member_to_list",
+   "family": "literal_init_error",
+   "files": [
+    {
+     "lines": [
+      [
+       926,
+       927
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parser.py"
+    }
+   ],
+   "id": "h158",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parser.py#1"
+   ],
+   "sha256": "535ee7957fd3c3cbd2f545983ced9a55753621c6b07f634938883b60d09e0b15",
+   "tags": []
+  },
+  {
+   "bytes": 519,
+   "detail": "copy:copy=False->True",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       423,
+       424
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/snowflake.py"
+    }
+   ],
+   "id": "h159",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/snowflake.py"
+   ],
+   "sha256": "71019a4af72346b559fe79e5cd667a811324e3280041cc54b33c3a47549f6cc4",
+   "tags": []
+  },
+  {
+   "bytes": 557,
+   "detail": "eq:==->!=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       1447,
+       1448
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/snowflake.py"
+    }
+   ],
+   "id": "h160",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/snowflake.py"
+   ],
+   "sha256": "9ac0ecc95b644057993e9daf525019bdb2434d3746ec510506a5f2bafd2d7f5b",
+   "tags": []
+  },
+  {
+   "bytes": 590,
+   "detail": "in:in->not in",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       247,
+       248
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/singlestore.py"
+    }
+   ],
+   "id": "h161",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/singlestore.py"
+   ],
+   "sha256": "b45d0aad0492971b024bb29de1cc67861cd926ca977a9d48ce5384da7de634fd",
+   "tags": []
+  },
+  {
+   "bytes": 319,
+   "detail": "no_eol_add",
+   "family": "malformed",
+   "files": [
+    {
+     "lines": [
+      [
+       213,
+       213
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/optimizer/eliminate_subqueries.py"
+    }
+   ],
+   "id": "h162",
+   "labellable": true,
+   "regions": [
+    "sqlglot/optimizer/eliminate_subqueries.py"
+   ],
+   "sha256": "1bb56632294f572ade92ad2c9df5301a839f0efff6de478da2bdf0883aad8158",
+   "tags": []
+  },
+  {
+   "bytes": 500,
+   "detail": "iter_forever",
+   "family": "timeout",
+   "files": [
+    {
+     "lines": [
+      [
+       78,
+       78
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/dialects/athena.py"
+    }
+   ],
+   "id": "h163",
+   "labellable": true,
+   "regions": [
+    "sqlglot/dialects/athena.py"
+   ],
+   "sha256": "491e10869d0bf46c4992fd9cf9d13ac33883771cf4c7ffaa7e97fc0aa1a8b312",
+   "tags": [
+    "slow"
+   ]
+  },
+  {
+   "bytes": 491,
+   "detail": "lazy_missing",
+   "family": "import_edit",
+   "files": [
+    {
+     "lines": [
+      [
+       308,
+       308
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/optimizer/resolver.py"
+    }
+   ],
+   "id": "h164",
+   "labellable": true,
+   "regions": [
+    "sqlglot/optimizer/resolver.py"
+   ],
+   "sha256": "96824311d7f17f130667a2d376202012df5cf8406453fb800c76abd10a9d87c6",
+   "tags": []
+  },
+  {
+   "bytes": 445,
+   "detail": "annotation_param",
+   "family": "metadata",
+   "files": [
+    {
+     "lines": [
+      [
+       10723,
+       10724
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parser.py"
+    }
+   ],
+   "id": "h165",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parser.py#21"
+   ],
+   "sha256": "afa4dd74e535f97a8521674bf26cf3fe52fcfab7e8209e783cba9f5d7272f81d",
+   "tags": []
+  },
+  {
+   "bytes": 505,
+   "detail": "line_shift_comment",
+   "family": "metadata",
+   "files": [
+    {
+     "lines": [
+      [
+       400,
+       400
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/teradata.py"
+    }
+   ],
+   "id": "h166",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/teradata.py"
+   ],
+   "sha256": "339f0deac9405b03f996105f0e54f8d318927ffa88592e25c3360229a1d8de5e",
+   "tags": []
+  },
+  {
+   "bytes": 456,
+   "detail": "not:not->(removed)",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       966,
+       967
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/clickhouse.py"
+    }
+   ],
+   "id": "h167",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/clickhouse.py"
+   ],
+   "sha256": "905ea04ee13e62d8e82941552c7a9e48f970d3c5f60e2cb8703b0f2d0899a605",
+   "tags": []
+  },
+  {
+   "bytes": 427,
+   "detail": "in:in->not in",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       123,
+       124
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/dialects/athena.py"
+    }
+   ],
+   "id": "h168",
+   "labellable": true,
+   "regions": [
+    "sqlglot/dialects/athena.py"
+   ],
+   "sha256": "d4696a0be8c55b387bcf0572e9310fd3f0280414f3b4cdc14f962b5416a3279b",
+   "tags": []
+  },
+  {
+   "bytes": 684,
+   "detail": "key_to_list",
+   "family": "literal_init_error",
+   "files": [
+    {
+     "lines": [
+      [
+       793,
+       794
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generator.py"
+    }
+   ],
+   "id": "h169",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generator.py#1"
+   ],
+   "sha256": "d810e0cbe7be62c1b74abdc2b156e0598d9c792d1e946de0be0cb600e0f542ec",
+   "tags": []
+  },
+  {
+   "bytes": 371,
+   "detail": "-",
+   "family": "token_flip",
+   "files": [
+    {
+     "lines": [
+      [
+       403,
+       404
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/expressions/builders.py"
+    }
+   ],
+   "id": "h170",
+   "labellable": true,
+   "regions": [
+    "sqlglot/expressions/builders.py#0"
+   ],
+   "sha256": "0b4fcd0a890811bbbb2f38c7b58e8c917267fed170391433c91b409623bf8c6e",
+   "tags": []
+  },
+  {
+   "bytes": 408,
+   "detail": "bool_flip",
+   "family": "class_table",
+   "files": [
+    {
+     "lines": [
+      [
+       274,
+       275
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/clickhouse.py"
+    }
+   ],
+   "id": "h171",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/clickhouse.py"
+   ],
+   "sha256": "9176fce152b43b940dde481357029fa84afa140ff137b36748b51dfbb68b17c2",
+   "tags": []
+  },
+  {
+   "bytes": 479,
+   "detail": "attr_rename",
+   "family": "runtime_error",
+   "files": [
+    {
+     "lines": [
+      [
+       5487,
+       5488
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generator.py"
+    }
+   ],
+   "id": "h172",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generator.py#10"
+   ],
+   "sha256": "f10ecca20caec7dfd3eb9cc9ed83973cb4ab5785b5e85b96dbed249e2f94bc67",
+   "tags": []
+  },
+  {
+   "bytes": 489,
+   "detail": "sorted->list",
+   "family": "hash_order",
+   "files": [
+    {
+     "lines": [
+      [
+       3510,
+       3511
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h173",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#7"
+   ],
+   "sha256": "3523c54fcaeeea092f1302690a3bbf5857c0f3f481868d6cb824406604df04bc",
+   "tags": []
+  },
+  {
+   "bytes": 436,
+   "detail": "-",
+   "family": "syntax_error",
+   "files": [
+    {
+     "lines": [
+      [
+       6752,
+       6753
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generator.py"
+    }
+   ],
+   "id": "h174",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generator.py#13"
+   ],
+   "sha256": "d087fb4f0ebcf9e0bcd80075c21a800816215b491bec357e91aa6dd7d171c820",
+   "tags": []
+  },
+  {
+   "bytes": 428,
+   "detail": "attr_rename",
+   "family": "runtime_error",
+   "files": [
+    {
+     "lines": [
+      [
+       5491,
+       5492
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generator.py"
+    }
+   ],
+   "id": "h175",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generator.py#10"
+   ],
+   "sha256": "be6c1cfbc3ee0251f6f87940b9b53f4cf5c2ce2ffcec55cc483fba7e8d7d1433",
+   "tags": []
+  },
+  {
+   "bytes": 583,
+   "detail": "is:is->==",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       163,
+       164
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/teradata.py"
+    }
+   ],
+   "id": "h176",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/teradata.py"
+   ],
+   "sha256": "56e6c4b35df0fa43d3b54283234685674fa57497e92657e9dadd1f26fffcaad5",
+   "tags": []
+  },
+  {
+   "bytes": 439,
+   "detail": "line",
+   "family": "comment",
+   "files": [
+    {
+     "lines": [
+      [
+       5406,
+       5406
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parser.py"
+    }
+   ],
+   "id": "h177",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parser.py#10"
+   ],
+   "sha256": "b45583cf0560404a0263e4b67150dab6efda3e109dd16394e1604be323634510",
+   "tags": []
+  },
+  {
+   "bytes": 524,
+   "detail": "member_to_list",
+   "family": "literal_init_error",
+   "files": [
+    {
+     "lines": [
+      [
+       666,
+       667
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/optimizer/simplify.py"
+    }
+   ],
+   "id": "h178",
+   "labellable": true,
+   "regions": [
+    "sqlglot/optimizer/simplify.py#1"
+   ],
+   "sha256": "3aa005d1dc53d4e892aa91aa8888694215d2a96b4d7d973db80140c8733af1f4",
+   "tags": []
+  },
+  {
+   "bytes": 462,
+   "detail": "-",
+   "family": "class_literal",
+   "files": [
+    {
+     "lines": [
+      [
+       2313,
+       2314
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/expressions/core.py"
+    }
+   ],
+   "id": "h179",
+   "labellable": true,
+   "regions": [
+    "sqlglot/expressions/core.py#4"
+   ],
+   "sha256": "b6de047037f759e24b3918d50ce5da612bae8307a4938181770ab38c9c9cbebd",
+   "tags": []
+  },
+  {
+   "bytes": 513,
+   "detail": "eq:==->!=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       886,
+       887
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h180",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#1"
+   ],
+   "sha256": "7f2ea306b6422f7fd5fd13b79697f2d546b7adfc776b47dd2a14718c4539293d",
+   "tags": []
+  },
+  {
+   "bytes": 639,
+   "detail": "crlf_line",
+   "family": "malformed",
+   "files": [
+    {
+     "lines": [
+      [
+       526,
+       528
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/executor/python.py"
+    }
+   ],
+   "id": "h181",
+   "labellable": true,
+   "regions": [
+    "sqlglot/executor/python.py"
+   ],
+   "sha256": "30d005b36815c284667dbe4e4b621f85e79819e63d211024a260aebed4b658a2",
+   "tags": []
+  },
+  {
+   "bytes": 341,
+   "detail": "unhashable_set",
+   "family": "literal_init_error",
+   "files": [
+    {
+     "lines": [
+      [
+       289,
+       290
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/expressions/functions.py"
+    }
+   ],
+   "id": "h182",
+   "labellable": true,
+   "regions": [
+    "sqlglot/expressions/functions.py#0"
+   ],
+   "sha256": "9dee2e90e84fd2153efc2439d2e95e80c20a148d7063e653ec1d943fb789e749",
+   "tags": []
+  },
+  {
+   "bytes": 444,
+   "detail": "copy:copy=False->True",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       25,
+       26
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/dax.py"
+    }
+   ],
+   "id": "h183",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/dax.py"
+   ],
+   "sha256": "3104251ef550bf6df353ea7c9f22ed7ba97ee8b6da0c14044eb931ab91b98d98",
+   "tags": []
+  },
+  {
+   "bytes": 404,
+   "detail": "line_shift_blank",
+   "family": "metadata",
+   "files": [
+    {
+     "lines": [
+      [
+       222,
+       222
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/snowflake.py"
+    }
+   ],
+   "id": "h184",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/snowflake.py"
+   ],
+   "sha256": "7e07ed4121098aae1df56cf12ebf08ad5dc63c519a88b5f8f29877ba621260e5",
+   "tags": []
+  },
+  {
+   "bytes": 404,
+   "detail": "large_set_remove",
+   "family": "class_table",
+   "files": [
+    {
+     "lines": [
+      [
+       62,
+       63
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/teradata.py"
+    }
+   ],
+   "id": "h185",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/teradata.py"
+   ],
+   "sha256": "a098b4aadd2b27ebe35ba455a369c1645cfe70c701b50bafa7f89e0a36a688ae",
+   "tags": []
+  },
+  {
+   "bytes": 513,
+   "detail": "eq:==->!=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       138,
+       139
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/dialects/athena.py"
+    }
+   ],
+   "id": "h186",
+   "labellable": true,
+   "regions": [
+    "sqlglot/dialects/athena.py"
+   ],
+   "sha256": "56e6c3eedb3f31c2322182b0893e09fdc314f6322eef939050d327c1245b233a",
+   "tags": []
+  },
+  {
+   "bytes": 722,
+   "detail": "is:is not->!=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       574,
+       575
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/clickhouse.py"
+    }
+   ],
+   "id": "h187",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/clickhouse.py"
+   ],
+   "sha256": "eeda073bf607a72d1ebc0bdbe1dbbfcbd4cfb2d65e1546fb8da90d5a0ae8a45d",
+   "tags": []
+  },
+  {
+   "bytes": 461,
+   "detail": "docstring_text",
+   "family": "metadata",
+   "files": [
+    {
+     "lines": [
+      [
+       3022,
+       3023
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h188",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#6"
+   ],
+   "sha256": "3c5a18cd3235cd9fe63af35dd19b9613f0405cb5b2c0824ac434382fe3f837f8",
+   "tags": []
+  },
+  {
+   "bytes": 351,
+   "detail": "raise_entry_common",
+   "family": "runtime_error",
+   "files": [
+    {
+     "lines": [
+      [
+       1935,
+       1935
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/optimizer/simplify.py"
+    }
+   ],
+   "id": "h189",
+   "labellable": true,
+   "regions": [
+    "sqlglot/optimizer/simplify.py#3"
+   ],
+   "sha256": "4f9f96c023eb3fed781fdde59aa258a0d923ea371ff41f8685ecd11fe9e26cb3",
+   "tags": []
+  },
+  {
+   "bytes": 554,
+   "detail": "in:in->not in",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       141,
+       142
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/dialects/athena.py"
+    }
+   ],
+   "id": "h190",
+   "labellable": true,
+   "regions": [
+    "sqlglot/dialects/athena.py"
+   ],
+   "sha256": "a608505a56176ba1d8d36e322f3d1f1b232d330a3124cb14d215d41ff3c03504",
+   "tags": []
+  },
+  {
+   "bytes": 545,
+   "detail": "dunder_edit",
+   "family": "registry",
+   "files": [
+    {
+     "lines": [
+      [
+       1422,
+       1423
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/expressions/core.py"
+    }
+   ],
+   "id": "h191",
+   "labellable": true,
+   "regions": [
+    "sqlglot/expressions/core.py#2"
+   ],
+   "sha256": "267a09920f500ed6912550c95a7e04a46f3db09c4aed4d41f437a7c30d2330d3",
+   "tags": []
+  },
+  {
+   "bytes": 625,
+   "detail": "kwbool:flat=True->False",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       59,
+       60
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/materialize.py"
+    }
+   ],
+   "id": "h192",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/materialize.py"
+   ],
+   "sha256": "b00754bd3522dae259e412e63c241ab238f36d82841f13c76b710c15d0469dc1",
+   "tags": []
+  },
+  {
+   "bytes": 482,
+   "detail": "fixture_tpc_sql",
+   "family": "test_edit",
+   "files": [
+    {
+     "lines": [
+      [
+       9308,
+       9309
+      ]
+     ],
+     "op": "modify",
+     "path": "tests/fixtures/optimizer/tpc-ds/tpc-ds.sql"
+    }
+   ],
+   "id": "h193",
+   "labellable": true,
+   "regions": [
+    "tests/fixtures/optimizer/tpc-ds/tpc-ds.sql#18"
+   ],
+   "sha256": "6dcff3c2294da97446be9f060d65e1d5a1b706aefe441730a25c8dc68f6897fd",
+   "tags": []
+  },
+  {
+   "bytes": 479,
+   "detail": "dict_value",
+   "family": "class_table",
+   "files": [
+    {
+     "lines": [
+      [
+       717,
+       718
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generator.py"
+    }
+   ],
+   "id": "h194",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generator.py#1"
+   ],
+   "sha256": "1955a69dedcbcd101db6cf8dce6dec29a3ca16aa4f3eeba73e104a86b94f4ada",
+   "tags": []
+  },
+  {
+   "bytes": 365,
+   "detail": "after_if_return",
+   "family": "insert_branch",
+   "files": [
+    {
+     "lines": [
+      [
+       6643,
+       6643
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parser.py"
+    }
+   ],
+   "id": "h195",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parser.py#13"
+   ],
+   "sha256": "03ecad63f20386d24b6fe95209e72f2ad414c13e5c765dc20a44068dedaabf35",
+   "tags": []
+  },
+  {
+   "bytes": 689,
+   "detail": "in:in->not in",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       104,
+       105
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/snowflake.py"
+    }
+   ],
+   "id": "h196",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/snowflake.py"
+   ],
+   "sha256": "b63b26c7026dce6cc05acf22ad1d151fcc5e55ad7cf456778ebb74cf229950f2",
+   "tags": []
+  },
+  {
+   "bytes": 895,
+   "detail": "linked_return",
+   "family": "compound_eq",
+   "files": [
+    {
+     "lines": [
+      [
+       163,
+       164
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/teradata.py",
+     "role": "cmp_swap"
+    },
+    {
+     "lines": [
+      [
+       1205,
+       1206
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/snowflake.py",
+     "role": "producer:_parse_table_parts"
+    }
+   ],
+   "id": "h197",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/snowflake.py",
+    "sqlglot/parsers/teradata.py"
+   ],
+   "sha256": "21036a87f41bd07571eb6597ce5682aef4658eba768ac5da6fe0381287b62e4f",
+   "tags": []
+  },
+  {
+   "bytes": 677,
+   "detail": "is:is->==",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       409,
+       410
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/clickhouse.py"
+    }
+   ],
+   "id": "h198",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/clickhouse.py"
+   ],
+   "sha256": "a51b13d02e95dd9d7d66b5d7e50ba00fa1b8f59af1a94ad3c3c65d2599f008e6",
+   "tags": []
+  },
+  {
+   "bytes": 484,
+   "detail": "lt:>->>=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       4006,
+       4007
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h199",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#8"
+   ],
+   "sha256": "87d1e226a92f0ae93e87e50476514128e2d01c5c461c7e7bb472ddc7850ae3ba",
+   "tags": []
+  },
+  {
+   "bytes": 292,
+   "detail": "fixture_sql",
+   "family": "test_edit",
+   "files": [
+    {
+     "lines": [
+      [
+       999,
+       1000
+      ]
+     ],
+     "op": "modify",
+     "path": "tests/fixtures/optimizer/simplify.sql"
+    }
+   ],
+   "id": "h200",
+   "labellable": true,
+   "regions": [
+    "tests/fixtures/optimizer/simplify.sql#1"
+   ],
+   "sha256": "151ddc6b2044ff740022a4ca9ad0157f9d2e8e71969fbd2a855d787a1c1d2cfd",
+   "tags": []
+  },
+  {
+   "bytes": 231,
+   "detail": "pyproject_filterwarnings",
+   "family": "hook_config",
+   "files": [
+    {
+     "lines": [
+      [
+       52,
+       52
+      ]
+     ],
+     "op": "modify",
+     "path": "pyproject.toml"
+    }
+   ],
+   "id": "h201",
+   "labellable": true,
+   "regions": [
+    "pyproject.toml"
+   ],
+   "sha256": "ae2250cc1c821399f470c7fc69e45ece8e50bcc45b5dbba9149556fe785f3a1f",
+   "tags": []
+  },
+  {
+   "bytes": 231,
+   "detail": "rename_fixture",
+   "family": "file_ops",
+   "files": [
+    {
+     "lines": [],
+     "op": "rename",
+     "path": "tests/fixtures/optimizer/normalize.sql",
+     "to": "tests/fixtures/optimizer/normalize_renamed.sql"
+    }
+   ],
+   "id": "h202",
+   "labellable": true,
+   "regions": [
+    "tests/fixtures/optimizer/normalize.sql",
+    "tests/fixtures/optimizer/normalize_renamed.sql"
+   ],
+   "sha256": "572acbb78d2258b2498cbf9234df7385b14e9c6b187b75b8aedd7d3bba07971d",
+   "tags": []
+  },
+  {
+   "bytes": 464,
+   "detail": "not:not->(removed)",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       271,
+       272
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/oracle.py"
+    }
+   ],
+   "id": "h203",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/oracle.py"
+   ],
+   "sha256": "daa57f034bcac71c8bdd8f51743d6bff7d81252e1b9b7025e3b0a2277f13b2af",
+   "tags": []
+  },
+  {
+   "bytes": 630,
+   "detail": "lt:<-><=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       312,
+       313
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/teradata.py"
+    }
+   ],
+   "id": "h204",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/teradata.py"
+   ],
+   "sha256": "ababbd0fc0ef6f041ff06da504617450dbb201183bb5ba467f3914c7be1170ee",
+   "tags": []
+  },
+  {
+   "bytes": 182,
+   "detail": "setup_cfg_filterwarnings",
+   "family": "hook_config",
+   "files": [
+    {
+     "lines": [
+      [
+       15,
+       15
+      ]
+     ],
+     "op": "modify",
+     "path": "setup.cfg"
+    }
+   ],
+   "id": "h205",
+   "labellable": true,
+   "regions": [
+    "setup.cfg"
+   ],
+   "sha256": "98ffe2b389070f2780297436c825076bd051bc147acc64aafdbca3ccbb79ada1",
+   "tags": []
+  },
+  {
+   "bytes": 610,
+   "detail": "kwbool:zero_is_msb=True->False",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       213,
+       214
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/duckdb.py"
+    }
+   ],
+   "id": "h206",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/duckdb.py"
+   ],
+   "sha256": "8ef8bea599ad701f0a6cf70b7a16530e3830263677c2aae09a20ea44e979c158",
+   "tags": []
+  },
+  {
+   "bytes": 554,
+   "detail": "-",
+   "family": "delete_line",
+   "files": [
+    {
+     "lines": [
+      [
+       3519,
+       3520
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parser.py"
+    }
+   ],
+   "id": "h207",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parser.py#7"
+   ],
+   "sha256": "95c6754141770555c10544f19611743f9e123bc0577a360e0266263b6eb93143",
+   "tags": []
+  },
+  {
+   "bytes": 593,
+   "detail": "kwbool:flat=True->False",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       46,
+       47
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/materialize.py"
+    }
+   ],
+   "id": "h208",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/materialize.py"
+   ],
+   "sha256": "9f194480c507f6f40f88dd18b61d3494ef01ec90cb30e2bc6c3d35e1fbf78eca",
+   "tags": []
+  },
+  {
+   "bytes": 553,
+   "detail": "is:is->==",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       388,
+       389
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/teradata.py"
+    }
+   ],
+   "id": "h209",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/teradata.py"
+   ],
+   "sha256": "673742cac81f98f8dd1c55b0215200fc1a4d57bbd8718d844c8c0847295944e4",
+   "tags": []
+  },
+  {
+   "bytes": 506,
+   "detail": "eq:==->!=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       156,
+       157
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/prql.py"
+    }
+   ],
+   "id": "h210",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/prql.py"
+   ],
+   "sha256": "8b957f13ecd536bdadd31aa8f1c13532298a76079277273a0d821053d77a85df",
+   "tags": []
+  },
+  {
+   "bytes": 476,
+   "detail": "class_table_mutate",
+   "family": "shared_state",
+   "files": [
+    {
+     "lines": [
+      [
+       4997,
+       4997
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h211",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#9"
+   ],
+   "sha256": "db43d8671ccc8710e628371658a5a8a8ab9a416e448cf77bd47e88c6df9a5ad2",
+   "tags": []
+  },
+  {
+   "bytes": 906,
+   "detail": "linked_return",
+   "family": "compound_eq",
+   "files": [
+    {
+     "lines": [
+      [
+       464,
+       465
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/optimizer/qualify_columns.py",
+     "role": "cmp_swap"
+    },
+    {
+     "lines": [
+      [
+       1302,
+       1303
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/expressions/core.py",
+     "role": "producer:replace"
+    }
+   ],
+   "id": "h212",
+   "labellable": true,
+   "regions": [
+    "sqlglot/expressions/core.py#2",
+    "sqlglot/optimizer/qualify_columns.py#0"
+   ],
+   "sha256": "8ddbb7e0aa83d5d72318639e939f7fbb89d83783437e287004b088e3fdc12270",
+   "tags": []
+  },
+  {
+   "bytes": 332,
+   "detail": "new_test_fail",
+   "family": "file_ops",
+   "files": [
+    {
+     "lines": [],
+     "op": "add",
+     "path": "tests/test_br_raven.py"
+    }
+   ],
+   "id": "h213",
+   "labellable": true,
+   "regions": [
+    "tests/test_br_raven.py"
+   ],
+   "sha256": "91dafa0e30e5f798b5a2deaf72f2a7e1a270a1cf90336d7dea2304f210e966f8",
+   "tags": []
+  },
+  {
+   "bytes": 494,
+   "detail": "eq:==->!=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       868,
+       869
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h214",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#1"
+   ],
+   "sha256": "c1410a086917499344d94290d0ffb02bf585142b8773205e8edef54cb34e5d57",
+   "tags": []
+  },
+  {
+   "bytes": 606,
+   "detail": "copy:copy=False->True",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       1024,
+       1025
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/snowflake.py"
+    }
+   ],
+   "id": "h215",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/snowflake.py"
+   ],
+   "sha256": "8c2776a35bafb6dea2eade26276fcc84b22d696c1891e5f1054de4527c540df3",
+   "tags": []
+  },
+  {
+   "bytes": 315,
+   "detail": "set_remove",
+   "family": "class_table",
+   "files": [
+    {
+     "lines": [
+      [
+       17,
+       18
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/databricks.py"
+    }
+   ],
+   "id": "h216",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/databricks.py"
+   ],
+   "sha256": "57e499c97ba03e1ea2f75f940fb9d8b96c5cefcec5f4447e8ef8881501d381eb",
+   "tags": []
+  },
+  {
+   "bytes": 413,
+   "detail": "loop_continue",
+   "family": "insert_branch",
+   "files": [
+    {
+     "lines": [
+      [
+       667,
+       667
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/optimizer/qualify_columns.py"
+    }
+   ],
+   "id": "h217",
+   "labellable": true,
+   "regions": [
+    "sqlglot/optimizer/qualify_columns.py#1"
+   ],
+   "sha256": "d90e168fd82ce3b353c47c0ba8dc62e081ae6cf092c5823eb17a66e231efdc02",
+   "tags": []
+  },
+  {
+   "bytes": 400,
+   "detail": "eq:==->!=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       20,
+       21
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/python.py"
+    }
+   ],
+   "id": "h218",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/python.py"
+   ],
+   "sha256": "c305d0f5e14b2a83b146b20d0e7daab9713150c389f055df9d7811630667ee8c",
+   "tags": []
+  },
+  {
+   "bytes": 479,
+   "detail": "class_table_mutate",
+   "family": "shared_state",
+   "files": [
+    {
+     "lines": [
+      [
+       4565,
+       4565
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h219",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#9"
+   ],
+   "sha256": "5890dbc7c856a7b5d51e1bbd529b3e807a45f462e35de4ce426d6567fd801747",
+   "tags": []
+  },
+  {
+   "bytes": 189,
+   "detail": "conftest_autouse",
+   "family": "hook_config",
+   "files": [
+    {
+     "lines": [],
+     "op": "add",
+     "path": "conftest.py"
+    }
+   ],
+   "id": "h220",
+   "labellable": true,
+   "regions": [
+    "conftest.py"
+   ],
+   "sha256": "74b0ab985170edfcc84c372ab5ed3f7688cda547b750b84e5e58fff11981515d",
+   "tags": []
+  },
+  {
+   "bytes": 467,
+   "detail": "dispatch_cache",
+   "family": "shared_state",
+   "files": [
+    {
+     "lines": [
+      [
+       1004,
+       1005
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generator.py"
+    }
+   ],
+   "id": "h221",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generator.py#2"
+   ],
+   "sha256": "e04772403a8137f6d4720cdc09dbbb9bc645fe0c55369abc967ebd16d13d70c0",
+   "tags": []
+  },
+  {
+   "bytes": 587,
+   "detail": "remove_name",
+   "family": "import_edit",
+   "files": [
+    {
+     "lines": [
+      [
+       10,
+       11
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/optimizer/pushdown_projections.py"
+    }
+   ],
+   "id": "h222",
+   "labellable": true,
+   "regions": [
+    "sqlglot/optimizer/pushdown_projections.py"
+   ],
+   "sha256": "a701a6fe277405d0618eed758be87a626c468ba807f686a543988c61ad3244b4",
+   "tags": []
+  },
+  {
+   "bytes": 996,
+   "detail": "binary_gz",
+   "family": "malformed",
+   "files": [
+    {
+     "lines": [],
+     "op": "binary",
+     "path": "tests/fixtures/optimizer/tpc-ds/warehouse.csv.gz"
+    }
+   ],
+   "id": "h223",
+   "labellable": true,
+   "regions": [
+    "tests/fixtures/optimizer/tpc-ds/warehouse.csv.gz"
+   ],
+   "sha256": "b590d1852714efce0ac2fda9c3ce16f3beab55e838de3b1499b255656a345d5c",
+   "tags": []
+  },
+  {
+   "bytes": 407,
+   "detail": "eq:!=->==",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       68,
+       69
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/presto.py"
+    }
+   ],
+   "id": "h224",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/presto.py"
+   ],
+   "sha256": "e3359f57aed535a1c6ae69d6dad9e2db2a88db18f1d62b7fb5aec28fa6ec843b",
+   "tags": []
+  },
+  {
+   "bytes": 525,
+   "detail": "is:is->==",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       191,
+       192
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/snowflake.py"
+    }
+   ],
+   "id": "h225",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/snowflake.py"
+   ],
+   "sha256": "0949d7584c1787d44d81f198306774f02aac0c0bc7dae8a28b60771549ac5dd6",
+   "tags": []
+  },
+  {
+   "bytes": 600,
+   "detail": "test_syntax",
+   "family": "test_edit",
+   "files": [
+    {
+     "lines": [
+      [
+       32,
+       33
+      ]
+     ],
+     "op": "modify",
+     "path": "tests/test_optimize_cross_joins.py"
+    }
+   ],
+   "id": "h226",
+   "labellable": true,
+   "regions": [
+    "tests/test_optimize_cross_joins.py"
+   ],
+   "sha256": "1ba4c9c0459c3b2c7a4234771cbc63f8ccc401c3ef5b75c0498caca2c9ae1f83",
+   "tags": []
+  },
+  {
+   "bytes": 278,
+   "detail": "line_shift_top",
+   "family": "metadata",
+   "files": [
+    {
+     "lines": [
+      [
+       39,
+       39
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/snowflake.py"
+    }
+   ],
+   "id": "h227",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/snowflake.py"
+   ],
+   "sha256": "708b89e4772cf4437729f3b8d705a6ee4788674be13c2f2c2dc971d5e8d29007",
+   "tags": []
+  },
+  {
+   "bytes": 482,
+   "detail": "middle_return",
+   "family": "insert_branch",
+   "files": [
+    {
+     "lines": [
+      [
+       6507,
+       6507
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generator.py"
+    }
+   ],
+   "id": "h228",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generator.py#13"
+   ],
+   "sha256": "cdd87f1502ae87a50b43d0deb764c3817704a124b574afaa28c0ae89a80f30a2",
+   "tags": []
+  },
+  {
+   "bytes": 340,
+   "detail": "dict_add",
+   "family": "class_table",
+   "files": [
+    {
+     "lines": [
+      [
+       706,
+       706
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generator.py"
+    }
+   ],
+   "id": "h229",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generator.py#1"
+   ],
+   "sha256": "512551e26ba22bd2a72d124458b551a7aed5e5dbb2bb0257d4be6b0484a611c0",
+   "tags": []
+  },
+  {
+   "bytes": 147,
+   "detail": "new_sqlglot_module",
+   "family": "file_ops",
+   "files": [
+    {
+     "lines": [],
+     "op": "add",
+     "path": "sqlglot/br_kestrel.py"
+    }
+   ],
+   "id": "h230",
+   "labellable": true,
+   "regions": [
+    "sqlglot/br_kestrel.py"
+   ],
+   "sha256": "93522ee922bc4f67b28308609f01044ad0976ba48422228599e0be51d82aade2",
+   "tags": []
+  },
+  {
+   "bytes": 586,
+   "detail": "boolop:or->and",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       86,
+       87
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/python.py"
+    }
+   ],
+   "id": "h231",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/python.py"
+   ],
+   "sha256": "e95e05b51651eb408555989146ff4b9249525772da110e4e62479a6b338920c8",
+   "tags": []
+  },
+  {
+   "bytes": 522,
+   "detail": "-",
+   "family": "cmp_swap",
+   "files": [
+    {
+     "lines": [
+      [
+       263,
+       264
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/snowflake.py"
+    }
+   ],
+   "id": "h232",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/snowflake.py"
+   ],
+   "sha256": "71a6dd558372621febdb8a52da1705b7566b86a0464241f449ffd80ace97ddff",
+   "tags": []
+  },
+  {
+   "bytes": 177,
+   "detail": "shadow_pkg_empty",
+   "family": "file_ops",
+   "files": [
+    {
+     "lines": [],
+     "op": "add",
+     "path": "sqlglot/planner/__init__.py",
+     "shadows": "sqlglot/planner.py"
+    }
+   ],
+   "id": "h233",
+   "labellable": true,
+   "regions": [
+    "sqlglot/planner.py",
+    "sqlglot/planner/__init__.py"
+   ],
+   "sha256": "e9cd213b4c3439fe4d09e3a34ade00faa508d9bf8420fc33c33047ce3bdb6341",
+   "tags": []
+  },
+  {
+   "bytes": 494,
+   "detail": "copy:copy=False->True",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       38,
+       39
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/dax.py"
+    }
+   ],
+   "id": "h234",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/dax.py"
+   ],
+   "sha256": "3843a2c276fc9e8016b34c6bd466cc0327a8709f7c4df55ba4166de61037b29e",
+   "tags": []
+  },
+  {
+   "bytes": 505,
+   "detail": "dispatch_cache",
+   "family": "shared_state",
+   "files": [
+    {
+     "lines": [
+      [
+       1004,
+       1005
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generator.py"
+    }
+   ],
+   "id": "h235",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generator.py#2"
+   ],
+   "sha256": "d41768156a0f4137e3891d7e6d44fe024f8bd47154516ef7af82d2693aa62afe",
+   "tags": []
+  },
+  {
+   "bytes": 367,
+   "detail": "after_if_return",
+   "family": "insert_branch",
+   "files": [
+    {
+     "lines": [
+      [
+       3930,
+       3930
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parser.py"
+    }
+   ],
+   "id": "h236",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parser.py#7"
+   ],
+   "sha256": "2ef2b8ea409598fafc48cc279e25eb2456ac8db776095075add9c4a2e0eb2d6f",
+   "tags": []
+  },
+  {
+   "bytes": 484,
+   "detail": "not:not->(removed)",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       3351,
+       3352
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h237",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#6"
+   ],
+   "sha256": "38d475228fe00711c804cdac6debfd5df46a3470a2170bbf4a73a72b936c3c00",
+   "tags": []
+  },
+  {
+   "bytes": 333,
+   "detail": "base_swap",
+   "family": "registry",
+   "files": [
+    {
+     "lines": [
+      [
+       151,
+       152
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/expressions/functions.py"
+    }
+   ],
+   "id": "h238",
+   "labellable": true,
+   "regions": [
+    "sqlglot/expressions/functions.py#0"
+   ],
+   "sha256": "b924f61468607d60564f4151ec3e1898a9e8027a9900d458e7e90f248f5a5f9d",
+   "tags": []
+  },
+  {
+   "bytes": 550,
+   "detail": "mode_with_edit",
+   "family": "file_ops",
+   "files": [
+    {
+     "lines": [
+      [
+       34,
+       35
+      ]
+     ],
+     "op": "mode",
+     "path": "sqlglot/dialects/oracle.py"
+    }
+   ],
+   "id": "h239",
+   "labellable": true,
+   "regions": [
+    "sqlglot/dialects/oracle.py"
+   ],
+   "sha256": "218460a020cd9ade87c836e137eb9875eacd343f55f35d9f81c945a50b105c99",
+   "tags": []
+  },
+  {
+   "bytes": 208,
+   "detail": "new_fixture",
+   "family": "file_ops",
+   "files": [
+    {
+     "lines": [],
+     "op": "add",
+     "path": "tests/fixtures/optimizer/br_raven.sql"
+    }
+   ],
+   "id": "h240",
+   "labellable": true,
+   "regions": [
+    "tests/fixtures/optimizer/br_raven.sql"
+   ],
+   "sha256": "6c08c9dda18dfa3b8ede49365a53d5c73fbebaa751c1b89e4c58db97d1da5487",
+   "tags": []
+  },
+  {
+   "bytes": 439,
+   "detail": "test_rename",
+   "family": "test_edit",
+   "files": [
+    {
+     "lines": [
+      [
+       2484,
+       2485
+      ]
+     ],
+     "op": "modify",
+     "path": "tests/dialects/test_duckdb.py"
+    }
+   ],
+   "id": "h241",
+   "labellable": true,
+   "regions": [
+    "tests/dialects/test_duckdb.py#4"
+   ],
+   "sha256": "dc8497af60c9e73c38661561c72ba2da6dbfbea087404b17cb2732fabb211f98",
+   "tags": []
+  },
+  {
+   "bytes": 583,
+   "detail": "lt:>=->>",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       345,
+       346
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/duckdb.py"
+    }
+   ],
+   "id": "h242",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/duckdb.py"
+   ],
+   "sha256": "d2e19d44b2f38274eb3b969c64f45e3ef75b1db45e96933fa2836779119c0928",
+   "tags": []
+  },
+  {
+   "bytes": 469,
+   "detail": "-",
+   "family": "token_flip",
+   "files": [
+    {
+     "lines": [
+      [
+       24,
+       25
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/databricks.py"
+    }
+   ],
+   "id": "h243",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/databricks.py"
+   ],
+   "sha256": "dd46382c1b78c7a1951e7be8f5ca8304b438b92761734911e01e036413cfa33a",
+   "tags": []
+  },
+  {
+   "bytes": 731,
+   "detail": "linked_return",
+   "family": "compound_eq",
+   "files": [
+    {
+     "lines": [
+      [
+       53,
+       54
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/time.py",
+     "role": "cmp_swap"
+    },
+    {
+     "lines": [
+      [
+       75,
+       76
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/trie.py",
+     "role": "producer:in_trie"
+    }
+   ],
+   "id": "h244",
+   "labellable": true,
+   "regions": [
+    "sqlglot/time.py",
+    "sqlglot/trie.py"
+   ],
+   "sha256": "97f9456c081f076abffa53145449cd42ade0ffa04a33e8fe14065e757c4ea073",
+   "tags": []
+  },
+  {
+   "bytes": 206,
+   "detail": "pyproject_other",
+   "family": "hook_config",
+   "files": [
+    {
+     "lines": [
+      [
+       52,
+       52
+      ]
+     ],
+     "op": "modify",
+     "path": "pyproject.toml"
+    }
+   ],
+   "id": "h245",
+   "labellable": true,
+   "regions": [
+    "pyproject.toml"
+   ],
+   "sha256": "b438bdc5314c4faf7ca70ce3b79fcec15f73e54c019585a3192129e0d99cebab",
+   "tags": []
+  },
+  {
+   "bytes": 368,
+   "detail": "neg_str",
+   "family": "literal_init_error",
+   "files": [
+    {
+     "lines": [
+      [
+       98,
+       99
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/hive.py"
+    }
+   ],
+   "id": "h246",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/hive.py"
+   ],
+   "sha256": "19c1543a28192487c9cb8b202555b6e842cdacda577f139875362552b9e1a079",
+   "tags": []
+  },
+  {
+   "bytes": 475,
+   "detail": "name_typo",
+   "family": "runtime_error",
+   "files": [
+    {
+     "lines": [
+      [
+       8752,
+       8753
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parser.py"
+    }
+   ],
+   "id": "h247",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parser.py#17"
+   ],
+   "sha256": "f100697381253b8423ac5686eebed27c9a93689cb9795686b7c7cff444a7cdfb",
+   "tags": []
+  },
+  {
+   "bytes": 591,
+   "detail": "binary_new",
+   "family": "malformed",
+   "files": [
+    {
+     "lines": [],
+     "op": "add",
+     "path": "tests/fixtures/br_ember.bin"
+    }
+   ],
+   "id": "h248",
+   "labellable": true,
+   "regions": [
+    "tests/fixtures/br_ember.bin"
+   ],
+   "sha256": "db422a2da359b516b0b091fa53cbfa071945309c3a566fae5acd4c6d532695f6",
+   "tags": []
+  },
+  {
+   "bytes": 413,
+   "detail": "neg_tuple",
+   "family": "literal_init_error",
+   "files": [
+    {
+     "lines": [
+      [
+       240,
+       241
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/hive.py"
+    }
+   ],
+   "id": "h249",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/hive.py"
+   ],
+   "sha256": "6350a073a46ddc2bcbecf3c3084060fe8c9f09d99eff4d8cdecdb56b022aa394",
+   "tags": []
+  },
+  {
+   "bytes": 223,
+   "detail": "docs_text",
+   "family": "metadata",
+   "files": [
+    {
+     "lines": [
+      [
+       432,
+       432
+      ]
+     ],
+     "op": "modify",
+     "path": "AGENTS.md"
+    }
+   ],
+   "id": "h250",
+   "labellable": true,
+   "regions": [
+    "AGENTS.md"
+   ],
+   "sha256": "c56b69d92d9079e9b2f4adfe98f5892e36d6c8256164926f69a2f97711b0def4",
+   "tags": []
+  },
+  {
+   "bytes": 462,
+   "detail": "-",
+   "family": "token_flip",
+   "files": [
+    {
+     "lines": [
+      [
+       777,
+       778
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/tsql.py"
+    }
+   ],
+   "id": "h251",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/tsql.py"
+   ],
+   "sha256": "03af7c204340c2f602ef061c171d4264d22850a7cabe0b8491955bfdce3798af",
+   "tags": []
+  },
+  {
+   "bytes": 608,
+   "detail": "not:not->(removed)",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       153,
+       154
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/databricks.py"
+    }
+   ],
+   "id": "h252",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/databricks.py"
+   ],
+   "sha256": "36fea4c192f9b2abe99a4bbcc932347d2184a15f7349cd3039b9dbe735fe5c32",
+   "tags": []
+  },
+  {
+   "bytes": 1,
+   "detail": "whitespace_only",
+   "family": "malformed",
+   "files": [],
+   "id": "h253",
+   "labellable": false,
+   "regions": [
+    "<whitespace_only>"
+   ],
+   "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+   "tags": []
+  },
+  {
+   "bytes": 501,
+   "detail": "inline",
+   "family": "comment",
+   "files": [
+    {
+     "lines": [
+      [
+       118,
+       119
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/singlestore.py"
+    }
+   ],
+   "id": "h254",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/singlestore.py"
+   ],
+   "sha256": "eb870e9b9109f80062b001a3670fb1e1fe8ad0726fb3169bf54f1ed38f2ade15",
+   "tags": []
+  },
+  {
+   "bytes": 669,
+   "detail": "eq:==->!=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       351,
+       352
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/teradata.py"
+    }
+   ],
+   "id": "h255",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/teradata.py"
+   ],
+   "sha256": "e76aeb3564847a9178cd36fc6d7912b13609318fef1a9447ef0af396792b2a63",
+   "tags": []
+  },
+  {
+   "bytes": 968,
+   "detail": "dup_stanza",
+   "family": "malformed",
+   "files": [
+    {
+     "lines": [
+      [
+       462,
+       463
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/snowflake.py"
+    },
+    {
+     "lines": [
+      [
+       1236,
+       1237
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/snowflake.py"
+    }
+   ],
+   "id": "h256",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/snowflake.py"
+   ],
+   "sha256": "2cf76eaee37db4f6560cdf97c5d911271e81cf0ae2832de6d27b76198cfd199d",
+   "tags": []
+  },
+  {
+   "bytes": 546,
+   "detail": "is:is not->!=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       90,
+       91
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/dialects/athena.py"
+    }
+   ],
+   "id": "h257",
+   "labellable": true,
+   "regions": [
+    "sqlglot/dialects/athena.py"
+   ],
+   "sha256": "c60d035b2d8a87ba31e796304caf6dccb7abfd85551bc2306d22c30fb921e4b7",
+   "tags": []
+  },
+  {
+   "bytes": 521,
+   "detail": "copy:copy=False->True",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       35,
+       36
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/dax.py"
+    }
+   ],
+   "id": "h258",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/dax.py"
+   ],
+   "sha256": "23e25620b75bddcd9731d00d0cc69cf7c046183f81446c81bbae7dc1d48af792",
+   "tags": []
+  },
+  {
+   "bytes": 380,
+   "detail": "typing_only",
+   "family": "import_edit",
+   "files": [
+    {
+     "lines": [
+      [
+       39,
+       39
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/snowflake.py"
+    }
+   ],
+   "id": "h259",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/snowflake.py"
+   ],
+   "sha256": "4363aaf166343644c5cbc8d380a1d8d2f19b5492a3a2c9efa941e895a60eb0aa",
+   "tags": []
+  },
+  {
+   "bytes": 385,
+   "detail": "eq:==->!=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       123,
+       124
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/exasol.py"
+    }
+   ],
+   "id": "h260",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/exasol.py"
+   ],
+   "sha256": "2e66279e4f06b77bb536efd86dfd074fda18e6c580c4a132a28aff2acdef8b3b",
+   "tags": []
+  },
+  {
+   "bytes": 498,
+   "detail": "eq:==->!=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       112,
+       113
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/exasol.py"
+    }
+   ],
+   "id": "h261",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/exasol.py"
+   ],
+   "sha256": "651e7bd4f88c367bd32b5568e44e8024815404d342e864a17616c806a63a1caa",
+   "tags": []
+  },
+  {
+   "bytes": 640,
+   "detail": "fixture_sql",
+   "family": "test_edit",
+   "files": [
+    {
+     "lines": [
+      [
+       46,
+       47
+      ]
+     ],
+     "op": "modify",
+     "path": "tests/fixtures/optimizer/normalize.sql"
+    }
+   ],
+   "id": "h262",
+   "labellable": true,
+   "regions": [
+    "tests/fixtures/optimizer/normalize.sql"
+   ],
+   "sha256": "5ffe1b7cf919b536388d7eff4d1df2b74e10a5e521a43a647b8159e6da7e54d4",
+   "tags": []
+  },
+  {
+   "bytes": 465,
+   "detail": "missing_module",
+   "family": "import_edit",
+   "files": [
+    {
+     "lines": [
+      [
+       43,
+       43
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/hive.py"
+    }
+   ],
+   "id": "h263",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/hive.py"
+   ],
+   "sha256": "e8b3422ab1167ea6492a23f2eb7a527d58e0d9affa2de241881b7172897dbf0c",
+   "tags": []
+  },
+  {
+   "bytes": 325,
+   "detail": "unhashable_dict",
+   "family": "literal_init_error",
+   "files": [
+    {
+     "lines": [
+      [
+       554,
+       555
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/executor/python.py"
+    }
+   ],
+   "id": "h264",
+   "labellable": true,
+   "regions": [
+    "sqlglot/executor/python.py"
+   ],
+   "sha256": "4599cf4954e031e200407f83876d8dba1537da63ac38ac2a9ef4cef1ce39fd46",
+   "tags": []
+  },
+  {
+   "bytes": 567,
+   "detail": "boolop:and->or",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       49,
+       50
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/materialize.py"
+    }
+   ],
+   "id": "h265",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/materialize.py"
+   ],
+   "sha256": "b5e10679be75a24628b04e1d3ad86678d25b4947099b70ae1afbfc4f66bd9afc",
+   "tags": []
+  },
+  {
+   "bytes": 365,
+   "detail": "is:is->==",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       41,
+       42
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/duckdb.py"
+    }
+   ],
+   "id": "h266",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/duckdb.py"
+   ],
+   "sha256": "c591481ed5fe8e4eba3a72c5e584d73fa38174c245b67a7b6fd8e8cbf5f5cde3",
+   "tags": []
+  },
+  {
+   "bytes": 739,
+   "detail": "counter_degrade:50",
+   "family": "shared_state",
+   "files": [
+    {
+     "lines": [
+      [
+       12,
+       12
+      ],
+      [
+       594,
+       594
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/lineage.py"
+    }
+   ],
+   "id": "h267",
+   "labellable": true,
+   "regions": [
+    "sqlglot/lineage.py"
+   ],
+   "sha256": "1b67e74979be93533a3414d7232a0073c94da60577c28790ad40c97141538e2e",
+   "tags": []
+  },
+  {
+   "bytes": 2576,
+   "detail": "delete_test",
+   "family": "file_ops",
+   "files": [
+    {
+     "lines": [],
+     "op": "delete",
+     "path": "tests/test_optimize_cross_joins.py"
+    }
+   ],
+   "id": "h268",
+   "labellable": true,
+   "regions": [
+    "tests/test_optimize_cross_joins.py"
+   ],
+   "sha256": "0bfacbe3088a995a38645ace3b1e27975a0db1ae035d63f14120587c4b548d0a",
+   "tags": []
+  },
+  {
+   "bytes": 500,
+   "detail": "eq:==->!=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       144,
+       145
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/dialects/athena.py"
+    }
+   ],
+   "id": "h269",
+   "labellable": true,
+   "regions": [
+    "sqlglot/dialects/athena.py"
+   ],
+   "sha256": "9d13aecad0d8e025efbc348cdf7cb42474410d8bdd3772e5fee964f82b79321a",
+   "tags": []
+  },
+  {
+   "bytes": 406,
+   "detail": "copy:copy=False->True",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       626,
+       627
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h270",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#1"
+   ],
+   "sha256": "ea902082e306d43438ae59c4fcd7a8fa5bfe3d67adaa3a54048ba51bab6784d3",
+   "tags": []
+  },
+  {
+   "bytes": 390,
+   "detail": "not:not->(removed)",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       1011,
+       1012
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/snowflake.py"
+    }
+   ],
+   "id": "h271",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/snowflake.py"
+   ],
+   "sha256": "c9456c5871439ebf1562e5dce266376f2f2e880eb38554cbfa5e96cb162d9029",
+   "tags": []
+  },
+  {
+   "bytes": 405,
+   "detail": "raise_entry_rare",
+   "family": "runtime_error",
+   "files": [
+    {
+     "lines": [
+      [
+       31,
+       31
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/tableau.py"
+    }
+   ],
+   "id": "h272",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/tableau.py"
+   ],
+   "sha256": "4411f98b42212236b878d2da4ac50f81db930f9d7d05af29794e1c613dd5cd12",
+   "tags": []
+  },
+  {
+   "bytes": 477,
+   "detail": "is:is->==",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       165,
+       166
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/exasol.py"
+    }
+   ],
+   "id": "h273",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/exasol.py"
+   ],
+   "sha256": "0624a56a8eabe2f59c789f6d7199d0c56de02bc50713c6f3ee7cf3ed9e326dae",
+   "tags": []
+  },
+  {
+   "bytes": 254,
+   "detail": "-",
+   "family": "docs_file",
+   "files": [
+    {
+     "lines": [
+      [
+       521,
+       521
+      ]
+     ],
+     "op": "modify",
+     "path": "AGENTS.md"
+    }
+   ],
+   "id": "h274",
+   "labellable": true,
+   "regions": [
+    "AGENTS.md"
+   ],
+   "sha256": "fb61e69d3568746efcd51a80addf49b9c10508af6595553dbf3a9708dda4cfa0",
+   "tags": []
+  },
+  {
+   "bytes": 586,
+   "detail": "boolop:and->or",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       133,
+       134
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/prql.py"
+    }
+   ],
+   "id": "h275",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/prql.py"
+   ],
+   "sha256": "574c8395ea7ce553e2cacbcc5a9da64ca86c9539fe1c2ddfda71eb7d1df31512",
+   "tags": []
+  },
+  {
+   "bytes": 120,
+   "detail": "tox_ini",
+   "family": "hook_config",
+   "files": [
+    {
+     "lines": [],
+     "op": "add",
+     "path": "tox.ini"
+    }
+   ],
+   "id": "h276",
+   "labellable": true,
+   "regions": [
+    "tox.ini"
+   ],
+   "sha256": "1b5243be2e0c81ed92db302a060eac3c669a9e6b3f786047dfe4c2e8c292fb84",
+   "tags": []
+  },
+  {
+   "bytes": 375,
+   "detail": "-",
+   "family": "class_literal",
+   "files": [
+    {
+     "lines": [
+      [
+       384,
+       385
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/expressions/temporal.py"
+    }
+   ],
+   "id": "h277",
+   "labellable": true,
+   "regions": [
+    "sqlglot/expressions/temporal.py#0"
+   ],
+   "sha256": "60bf5309834fcfcd45ebe4183e0c3dc2ec2744d62d188d7dde5c826601ffbf0b",
+   "tags": []
+  },
+  {
+   "bytes": 576,
+   "detail": "raise_branch",
+   "family": "runtime_error",
+   "files": [
+    {
+     "lines": [
+      [
+       6509,
+       6509
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parser.py"
+    }
+   ],
+   "id": "h278",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parser.py#13"
+   ],
+   "sha256": "bee57ab45af8ed8e8adb8947b047d763c28d226af90f7a382f20b654fd4a74fd",
+   "tags": []
+  },
+  {
+   "bytes": 409,
+   "detail": "-",
+   "family": "token_flip",
+   "files": [
+    {
+     "lines": [
+      [
+       2975,
+       2976
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parser.py"
+    }
+   ],
+   "id": "h279",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parser.py#5"
+   ],
+   "sha256": "dd522f28b55a634afe4613565d1a4029e2e2c297f424e79223eceda46c30890c",
+   "tags": []
+  },
+  {
+   "bytes": 421,
+   "detail": "annotation_attr",
+   "family": "metadata",
+   "files": [
+    {
+     "lines": [
+      [
+       376,
+       377
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/clickhouse.py"
+    }
+   ],
+   "id": "h280",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/clickhouse.py"
+   ],
+   "sha256": "33454ddaf949134d499589cc7d6955cd4e8782ac2cb5ff80e17658c81c16ceee",
+   "tags": []
+  },
+  {
+   "bytes": 486,
+   "detail": "middle_return",
+   "family": "insert_branch",
+   "files": [
+    {
+     "lines": [
+      [
+       1641,
+       1641
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/expressions/query.py"
+    }
+   ],
+   "id": "h281",
+   "labellable": true,
+   "regions": [
+    "sqlglot/expressions/query.py#3"
+   ],
+   "sha256": "ed241ad025aac6288c72ce4f2347eb1e1449783e73981aa3e266cebba65f6b80",
+   "tags": []
+  },
+  {
+   "bytes": 472,
+   "detail": "is:is not->!=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       4131,
+       4132
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h282",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#8"
+   ],
+   "sha256": "3449cc0211bf45544b0981845d515cf75f32b71393540c6a66f87509df85b0e2",
+   "tags": []
+  },
+  {
+   "bytes": 431,
+   "detail": "is:is not->!=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       83,
+       84
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/dialects/athena.py"
+    }
+   ],
+   "id": "h283",
+   "labellable": true,
+   "regions": [
+    "sqlglot/dialects/athena.py"
+   ],
+   "sha256": "e609a08ed666074e6b557e30f8e77cdcc14b0ffab2a24bc03ee60540dc5f083b",
+   "tags": []
+  },
+  {
+   "bytes": 449,
+   "detail": "kwbool:single_value_returns_zero=True->False",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       77,
+       78
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/oracle.py"
+    }
+   ],
+   "id": "h284",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/oracle.py"
+   ],
+   "sha256": "24462cd4d26e4848e93cad5e1a22b26d6bf575bf3ec39d6303d62e8cd9e0c2f1",
+   "tags": []
+  },
+  {
+   "bytes": 315,
+   "detail": "annotation_param",
+   "family": "metadata",
+   "files": [
+    {
+     "lines": [
+      [
+       83,
+       84
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/errors.py"
+    }
+   ],
+   "id": "h285",
+   "labellable": true,
+   "regions": [
+    "sqlglot/errors.py"
+   ],
+   "sha256": "c5636ebfea53dd755ccabe51a6f134025d4cbffab9816d7c8d82c2a5e781ca2e",
+   "tags": []
+  },
+  {
+   "bytes": 519,
+   "detail": "is:is not->!=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       834,
+       835
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/clickhouse.py"
+    }
+   ],
+   "id": "h286",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/clickhouse.py"
+   ],
+   "sha256": "e97183435064b19db9e3f496923a1c3b11c006b5f2255c1a06cbe12ee45fce13",
+   "tags": []
+  },
+  {
+   "bytes": 452,
+   "detail": "is:is not->!=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       1394,
+       1395
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h287",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#2"
+   ],
+   "sha256": "4c6bc61b057b025b94d6673c6ff9c7cf309f24f94fc11f50f1b0c1250690de5a",
+   "tags": []
+  },
+  {
+   "bytes": 504,
+   "detail": "in:in->not in",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       932,
+       933
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h288",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#1"
+   ],
+   "sha256": "74d5b1e3bb3603b3256d11076d6b6f0cade1bf0b6ca911dfedd06b0a845642d8",
+   "tags": []
+  },
+  {
+   "bytes": 624,
+   "detail": "large_dict_add",
+   "family": "class_table",
+   "files": [
+    {
+     "lines": [
+      [
+       810,
+       810
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generator.py"
+    }
+   ],
+   "id": "h289",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generator.py#1"
+   ],
+   "sha256": "3d8c4fbded62c0bc6f0f1f70421e560adceee625705d476b7ce247c0e1b7b24d",
+   "tags": []
+  },
+  {
+   "bytes": 359,
+   "detail": "new_test_pass",
+   "family": "file_ops",
+   "files": [
+    {
+     "lines": [],
+     "op": "add",
+     "path": "tests/dialects/test_br_ember.py"
+    }
+   ],
+   "id": "h290",
+   "labellable": true,
+   "regions": [
+    "tests/dialects/test_br_ember.py"
+   ],
+   "sha256": "695ac28582419382e7b9f4698e3b494c2706b74378555bfd777976ba02d0a695",
+   "tags": []
+  },
+  {
+   "bytes": 378,
+   "detail": "missing_module",
+   "family": "import_edit",
+   "files": [
+    {
+     "lines": [
+      [
+       8,
+       8
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/dialects/postgres.py"
+    }
+   ],
+   "id": "h291",
+   "labellable": true,
+   "regions": [
+    "sqlglot/dialects/postgres.py"
+   ],
+   "sha256": "736a7df3edf177314df5ac250184ee6808bcf39f2285842be904d7c61e25ad3b",
+   "tags": []
+  },
+  {
+   "bytes": 478,
+   "detail": "lt:<-><=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       303,
+       304
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/snowflake.py"
+    }
+   ],
+   "id": "h292",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/snowflake.py"
+   ],
+   "sha256": "8970f8bff81ef4f7563135c60d575370f3b9d3ce779b3dc3efce156951f3777a",
+   "tags": []
+  },
+  {
+   "bytes": 408,
+   "detail": "entry_raise",
+   "family": "insert_branch",
+   "files": [
+    {
+     "lines": [
+      [
+       1705,
+       1705
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/expressions/query.py"
+    }
+   ],
+   "id": "h293",
+   "labellable": true,
+   "regions": [
+    "sqlglot/expressions/query.py#3"
+   ],
+   "sha256": "a0d363867d7699a780b7c928268c419859bb982a3f5f7b2760b31ccc813e6ae0",
+   "tags": []
+  },
+  {
+   "bytes": 1658,
+   "detail": "fixture_gz",
+   "family": "test_edit",
+   "files": [
+    {
+     "lines": [],
+     "op": "binary",
+     "path": "tests/fixtures/optimizer/tpc-ds/store.csv.gz"
+    }
+   ],
+   "id": "h294",
+   "labellable": true,
+   "regions": [
+    "tests/fixtures/optimizer/tpc-ds/store.csv.gz"
+   ],
+   "sha256": "8ee5d5760744e8f9f082149b13a3df9462ed2053ca908b740468bb94f257c709",
+   "tags": []
+  },
+  {
+   "bytes": 284,
+   "detail": "-",
+   "family": "syntax_error",
+   "files": [
+    {
+     "lines": [
+      [
+       333,
+       334
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/expressions/ddl.py"
+    }
+   ],
+   "id": "h295",
+   "labellable": true,
+   "regions": [
+    "sqlglot/expressions/ddl.py#0"
+   ],
+   "sha256": "e376556a8f6d2e2f612a66e5ce763230a22d644662f20ef0a98b1dfe2f303383",
+   "tags": []
+  },
+  {
+   "bytes": 464,
+   "detail": "guarded_missing",
+   "family": "import_edit",
+   "files": [
+    {
+     "lines": [
+      [
+       22,
+       22
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/optimizer/qualify_columns.py"
+    }
+   ],
+   "id": "h296",
+   "labellable": true,
+   "regions": [
+    "sqlglot/optimizer/qualify_columns.py#0"
+   ],
+   "sha256": "e8733df060658486e10762031e750b03c52c56ebf0473841ff468be4f6bb39b1",
+   "tags": []
+  },
+  {
+   "bytes": 786,
+   "detail": "kwbool:on_overflow=True->False",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       355,
+       356
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/exasol.py"
+    }
+   ],
+   "id": "h297",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/exasol.py"
+   ],
+   "sha256": "167b689befe55351f24c380fe1600f90592af3a9b54179871923a232f34d29e1",
+   "tags": []
+  },
+  {
+   "bytes": 517,
+   "detail": "fuzzy_offset",
+   "family": "malformed",
+   "files": [
+    {
+     "lines": [
+      [
+       2773,
+       2774
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generator.py"
+    }
+   ],
+   "id": "h298",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generator.py#5"
+   ],
+   "sha256": "64ac075a2ce72b97bc6404a0b4a486579a749b37d6c123eb279cf977993ebbc1",
+   "tags": []
+  },
+  {
+   "bytes": 399,
+   "detail": "test_token",
+   "family": "test_edit",
+   "files": [
+    {
+     "lines": [
+      [
+       9,
+       10
+      ]
+     ],
+     "op": "modify",
+     "path": "tests/dialects/test_risingwave.py"
+    }
+   ],
+   "id": "h299",
+   "labellable": true,
+   "regions": [
+    "tests/dialects/test_risingwave.py"
+   ],
+   "sha256": "a207890d346d4562af5ef2fe174a4ed8f5dc8cd7a26bbe918030c4b5283e5a5c",
+   "tags": []
+  },
+  {
+   "bytes": 541,
+   "detail": "boolop:and->or",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       379,
+       380
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/starrocks.py"
+    }
+   ],
+   "id": "h300",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/starrocks.py"
+   ],
+   "sha256": "99864ad4b9d7059ba0f00ec9aca2f299cdce9a26edfd1cb70c55f472a13e14dc",
+   "tags": []
+  },
+  {
+   "bytes": 189,
+   "detail": "sitecustomize",
+   "family": "hook_config",
+   "files": [
+    {
+     "lines": [],
+     "op": "add",
+     "path": "sqlglot/sitecustomize.py"
+    }
+   ],
+   "id": "h301",
+   "labellable": true,
+   "regions": [
+    "sqlglot/sitecustomize.py"
+   ],
+   "sha256": "232616fb1c68dae1644396119f959b2bde902bf348b6c15d27c26f502ac909ce",
+   "tags": []
+  },
+  {
+   "bytes": 720,
+   "detail": "large_dict_value",
+   "family": "class_table",
+   "files": [
+    {
+     "lines": [
+      [
+       200,
+       201
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/singlestore.py"
+    }
+   ],
+   "id": "h302",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/singlestore.py"
+   ],
+   "sha256": "262536ec0c525d4b63c38f8adc62899777b18e689b01ce472065eefbc617848d",
+   "tags": []
+  },
+  {
+   "bytes": 542,
+   "detail": "boolop:or->and",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       157,
+       158
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/presto.py"
+    }
+   ],
+   "id": "h303",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/presto.py"
+   ],
+   "sha256": "cd14c71f60a7e3dd660baf0e41f0a1ab0f8bade27f77e4fe8986025947fd9304",
+   "tags": []
+  },
+  {
+   "bytes": 379,
+   "detail": "neg_tuple",
+   "family": "literal_init_error",
+   "files": [
+    {
+     "lines": [
+      [
+       1986,
+       1987
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/expressions/query.py"
+    }
+   ],
+   "id": "h304",
+   "labellable": true,
+   "regions": [
+    "sqlglot/expressions/query.py#3"
+   ],
+   "sha256": "b869c17188c724cfdba0d6628dea10a030375f205f0343ca310bf22c6a23af9c",
+   "tags": []
+  },
+  {
+   "bytes": 570,
+   "detail": "kwbool:upper=True->False",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       161,
+       162
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/doris.py"
+    }
+   ],
+   "id": "h305",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/doris.py"
+   ],
+   "sha256": "8a4d33d4904f829e4d62c5969bcce0ae55dec35083c1bd83d78b3d2322b9a7a6",
+   "tags": []
+  },
+  {
+   "bytes": 706,
+   "detail": "counter_degrade:500",
+   "family": "shared_state",
+   "files": [
+    {
+     "lines": [
+      [
+       7,
+       7
+      ],
+      [
+       13,
+       13
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/typing/hive.py"
+    }
+   ],
+   "id": "h306",
+   "labellable": true,
+   "regions": [
+    "sqlglot/typing/hive.py"
+   ],
+   "sha256": "d77f84a471c0e8cb353d77de19fcfc2ea51172c4ddcdd4c8782d8460a30959b6",
+   "tags": []
+  },
+  {
+   "bytes": 446,
+   "detail": "test_token",
+   "family": "test_edit",
+   "files": [
+    {
+     "lines": [
+      [
+       1502,
+       1503
+      ]
+     ],
+     "op": "modify",
+     "path": "tests/dialects/test_presto.py"
+    }
+   ],
+   "id": "h307",
+   "labellable": true,
+   "regions": [
+    "tests/dialects/test_presto.py#3"
+   ],
+   "sha256": "249310b63d12d767257ad05cb21ec73cd30caca032a32df7ff2bdf57113cee8e",
+   "tags": []
+  },
+  {
+   "bytes": 411,
+   "detail": "method_typo",
+   "family": "runtime_error",
+   "files": [
+    {
+     "lines": [
+      [
+       1511,
+       1512
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/expressions/core.py"
+    }
+   ],
+   "id": "h308",
+   "labellable": true,
+   "regions": [
+    "sqlglot/expressions/core.py#3"
+   ],
+   "sha256": "34c07c2995418093817a0a92b9b8c80eefe6d499f625dbcf455aa2e1fff5d47e",
+   "tags": []
+  },
+  {
+   "bytes": 368,
+   "detail": "kwbool:flat=True->False",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       93,
+       94
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/python.py"
+    }
+   ],
+   "id": "h309",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/python.py"
+   ],
+   "sha256": "e1f93c6d4dbda6de7758680e35d65a472134e42e1c6ff4dd58b52dd85a5c0bbf",
+   "tags": []
+  },
+  {
+   "bytes": 523,
+   "detail": "default_arg",
+   "family": "registry",
+   "files": [
+    {
+     "lines": [
+      [
+       3303,
+       3304
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h310",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#6"
+   ],
+   "sha256": "1bed6c90efe679ed728e68fdcf06e0d33fd1418e9935a2d6e254d174d74bd183",
+   "tags": []
+  },
+  {
+   "bytes": 538,
+   "detail": "kwbool:raise_unmatched=False->True",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       565,
+       566
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/tsql.py"
+    }
+   ],
+   "id": "h311",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/tsql.py"
+   ],
+   "sha256": "a93d53bc0f1de31494cb07b7a6d025d5a182eb1c73cfb99ff0c1998d4d5c7a6b",
+   "tags": []
+  },
+  {
+   "bytes": 463,
+   "detail": "seq_add",
+   "family": "class_table",
+   "files": [
+    {
+     "lines": [
+      [
+       78,
+       79
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/optimizer/pushdown_projections.py"
+    }
+   ],
+   "id": "h312",
+   "labellable": true,
+   "regions": [
+    "sqlglot/optimizer/pushdown_projections.py"
+   ],
+   "sha256": "6a316e22b1c5ae4df1d282bda7de555833652634d80490da53a3b06ce82ac7f0",
+   "tags": []
+  },
+  {
+   "bytes": 226,
+   "detail": "fixture_license",
+   "family": "test_edit",
+   "files": [
+    {
+     "lines": [
+      [
+       15,
+       15
+      ]
+     ],
+     "op": "modify",
+     "path": "tests/fixtures/jsonpath/LICENSE"
+    }
+   ],
+   "id": "h313",
+   "labellable": true,
+   "regions": [
+    "tests/fixtures/jsonpath/LICENSE"
+   ],
+   "sha256": "43c76bac42c244d7684c613f60a95c3353fe032fb7a80902c20eef66ee96e084",
+   "tags": []
+  },
+  {
+   "bytes": 329,
+   "detail": "kwbool:full_match=True->False",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       216,
+       217
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/snowflake.py"
+    }
+   ],
+   "id": "h314",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/snowflake.py"
+   ],
+   "sha256": "2f74342dfbf00291b659ab8ed5e377fb477803e98b45172424e05c50ffa226d6",
+   "tags": []
+  },
+  {
+   "bytes": 505,
+   "detail": "copy:copy=False->True",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       836,
+       837
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h315",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#1"
+   ],
+   "sha256": "0795a4d4e311571dc6323f3f2b82c04ef1604255c3787c8ca675eaee9b17086e",
+   "tags": []
+  },
+  {
+   "bytes": 462,
+   "detail": "seq_remove",
+   "family": "class_table",
+   "files": [
+    {
+     "lines": [
+      [
+       40,
+       41
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/dialects/sqlite.py"
+    }
+   ],
+   "id": "h316",
+   "labellable": true,
+   "regions": [
+    "sqlglot/dialects/sqlite.py"
+   ],
+   "sha256": "0fba3b0d2c17a555a4e2ced66161e0c15e4a3122c845ae8fcfd5054eded766f2",
+   "tags": []
+  },
+  {
+   "bytes": 482,
+   "detail": "num",
+   "family": "class_table",
+   "files": [
+    {
+     "lines": [
+      [
+       837,
+       838
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/dialects/dialect.py"
+    }
+   ],
+   "id": "h317",
+   "labellable": true,
+   "regions": [
+    "sqlglot/dialects/dialect.py#1"
+   ],
+   "sha256": "688de6b8503cf6938e71c771ada878ef09b43214a98b4151e677800dc595155e",
+   "tags": []
+  },
+  {
+   "bytes": 488,
+   "detail": "is:is->==",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       175,
+       176
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/oracle.py"
+    }
+   ],
+   "id": "h318",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/oracle.py"
+   ],
+   "sha256": "2cb5744c4e792237477576447a75e9eb5d242159d6ad1ce1e0f480038641aaeb",
+   "tags": []
+  },
+  {
+   "bytes": 621,
+   "detail": "name_typo",
+   "family": "runtime_error",
+   "files": [
+    {
+     "lines": [
+      [
+       4646,
+       4647
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h319",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#9"
+   ],
+   "sha256": "a53da552fb551849a4b0ae42b565db12d6a400e3f1bb5d91d02dd5ed5d0e16d0",
+   "tags": []
+  },
+  {
+   "bytes": 499,
+   "detail": "copy:copy=False->True",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       38,
+       39
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/starrocks.py"
+    }
+   ],
+   "id": "h320",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/starrocks.py"
+   ],
+   "sha256": "b1e515f019bacc99907f1c65e78cd74ba10ac4b8c44078be865b5744c51e09a6",
+   "tags": []
+  },
+  {
+   "bytes": 450,
+   "detail": "eq:==->!=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       182,
+       183
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/trino.py"
+    }
+   ],
+   "id": "h321",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/trino.py"
+   ],
+   "sha256": "7a92d4b7c2042b75979456c18d03d02c469c80bc0aa4241f8b86f1b8e93d373b",
+   "tags": []
+  },
+  {
+   "bytes": 505,
+   "detail": "copy:copy=False->True",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       1161,
+       1162
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/snowflake.py"
+    }
+   ],
+   "id": "h322",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/snowflake.py"
+   ],
+   "sha256": "a979c520253777c702114696ac7a6d1bff6193cfb94cbcad416c7f96a78618c8",
+   "tags": []
+  },
+  {
+   "bytes": 411,
+   "detail": "entry_return",
+   "family": "insert_branch",
+   "files": [
+    {
+     "lines": [
+      [
+       26,
+       26
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/clickhouse.py"
+    }
+   ],
+   "id": "h323",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/clickhouse.py"
+   ],
+   "sha256": "c0c5eaef18e156e9deff83c0b98dbad1f395a5848f55a405912b9f5a24f4fa51",
+   "tags": []
+  },
+  {
+   "bytes": 437,
+   "detail": "not:not->(removed)",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       420,
+       421
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/starrocks.py"
+    }
+   ],
+   "id": "h324",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/starrocks.py"
+   ],
+   "sha256": "b6f83441f2dce03e8f4c0d5f43589ef6368971718617d0444ed2ec0988de4e5c",
+   "tags": []
+  },
+  {
+   "bytes": 507,
+   "detail": "eq:!=->==",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       134,
+       135
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/hive.py"
+    }
+   ],
+   "id": "h325",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/hive.py"
+   ],
+   "sha256": "f133db84062121c9105947655ff9e34febdaf77d60709e1cb0eec7357e0780dc",
+   "tags": []
+  },
+  {
+   "bytes": 578,
+   "detail": "kwbool:advance=False->True",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       1364,
+       1365
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/snowflake.py"
+    }
+   ],
+   "id": "h326",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/snowflake.py"
+   ],
+   "sha256": "457e15226ab4feb8afff8b30b5523c836f3e499a962a37f2d4086bfca9f9a38c",
+   "tags": []
+  },
+  {
+   "bytes": 556,
+   "detail": "not:not->(removed)",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       178,
+       179
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/oracle.py"
+    }
+   ],
+   "id": "h327",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/oracle.py"
+   ],
+   "sha256": "b7a9cb9b7fef981296529292d5a3e3bcb47d1d2cfc06aba03c06d3d075129665",
+   "tags": []
+  },
+  {
+   "bytes": 175,
+   "detail": "conftest_fixture",
+   "family": "hook_config",
+   "files": [
+    {
+     "lines": [],
+     "op": "add",
+     "path": "conftest.py"
+    }
+   ],
+   "id": "h328",
+   "labellable": true,
+   "regions": [
+    "conftest.py"
+   ],
+   "sha256": "278ddd4fabc52584f3d0c5b2a7018e95e77faac5fb965a827a566a4e9734d5f2",
+   "tags": []
+  },
+  {
+   "bytes": 596,
+   "detail": "is:is->==",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       362,
+       363
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/snowflake.py"
+    }
+   ],
+   "id": "h329",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/snowflake.py"
+   ],
+   "sha256": "a2ada8ef1a9a4b9d3660a3b4f7258ae1fdc0c55027d211cf765d1992c170d7b0",
+   "tags": []
+  },
+  {
+   "bytes": 452,
+   "detail": "lt:>=->>",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       142,
+       143
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/trino.py"
+    }
+   ],
+   "id": "h330",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/trino.py"
+   ],
+   "sha256": "9912e10765b151e27894fc67a31ca70a629cbc105e1f51fcd742be4db37ecfcc",
+   "tags": []
+  },
+  {
+   "bytes": 315,
+   "detail": "base_replace",
+   "family": "registry",
+   "files": [
+    {
+     "lines": [
+      [
+       1993,
+       1994
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/expressions/query.py"
+    }
+   ],
+   "id": "h331",
+   "labellable": true,
+   "regions": [
+    "sqlglot/expressions/query.py#3"
+   ],
+   "sha256": "9d7d6ebc8ae7bf72424842959bccd5c9f98b32c1646d49515883e6fd696c664d",
+   "tags": []
+  },
+  {
+   "bytes": 489,
+   "detail": "decorator_arg",
+   "family": "registry",
+   "files": [
+    {
+     "lines": [
+      [
+       2088,
+       2089
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/dialects/dialect.py"
+    }
+   ],
+   "id": "h332",
+   "labellable": true,
+   "regions": [
+    "sqlglot/dialects/dialect.py#4"
+   ],
+   "sha256": "787e83f367b8aded6adb21354e3a0cc0735d5e6950fe54a7b2ae17824d9fe0de",
+   "tags": []
+  },
+  {
+   "bytes": 462,
+   "detail": "alter_module",
+   "family": "import_edit",
+   "files": [
+    {
+     "lines": [
+      [
+       14,
+       15
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/executor/__init__.py"
+    }
+   ],
+   "id": "h333",
+   "labellable": true,
+   "regions": [
+    "sqlglot/executor/__init__.py"
+   ],
+   "sha256": "cc238d6d78a5e3d9a09e448e1122935d010fe4a2eea370eab902caa2adb7fd11",
+   "tags": []
+  },
+  {
+   "bytes": 964,
+   "detail": "linked_return",
+   "family": "compound_eq",
+   "files": [
+    {
+     "lines": [
+      [
+       110,
+       111
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/executor/python.py",
+     "role": "cmp_swap"
+    },
+    {
+     "lines": [
+      [
+       268,
+       269
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/optimizer/scope.py",
+     "role": "producer:find"
+    }
+   ],
+   "id": "h334",
+   "labellable": true,
+   "regions": [
+    "sqlglot/executor/python.py",
+    "sqlglot/optimizer/scope.py"
+   ],
+   "sha256": "69c3f536bfdca9f9613587785ed5a8b0ed1b59defc3a1d5075cc50bd8a90e59d",
+   "tags": []
+  },
+  {
+   "bytes": 333,
+   "detail": "while_continue",
+   "family": "timeout",
+   "files": [
+    {
+     "lines": [
+      [
+       235,
+       235
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/exasol.py"
+    }
+   ],
+   "id": "h335",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/exasol.py"
+   ],
+   "sha256": "85d54ecec6b9fd1819219f509b95ec563f639f8d86a7e8138d62450ec411b245",
+   "tags": [
+    "slow"
+   ]
+  },
+  {
+   "bytes": 601,
+   "detail": "boolop:or->and",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       60,
+       61
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/dialects/oracle.py"
+    }
+   ],
+   "id": "h336",
+   "labellable": true,
+   "regions": [
+    "sqlglot/dialects/oracle.py"
+   ],
+   "sha256": "c37bcc5ee880b05e1201d6203a905efa1be1d3052d9d65f2b6f16615ed6f7e0c",
+   "tags": []
+  },
+  {
+   "bytes": 545,
+   "detail": "in:in->not in",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       206,
+       207
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/snowflake.py"
+    }
+   ],
+   "id": "h337",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/snowflake.py"
+   ],
+   "sha256": "58e2c6aa3978c58055129d759dff933971c312919650625880e15eb3cc767ef2",
+   "tags": []
+  },
+  {
+   "bytes": 504,
+   "detail": "not:not->(removed)",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       950,
+       951
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/clickhouse.py"
+    }
+   ],
+   "id": "h338",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/clickhouse.py"
+   ],
+   "sha256": "d67c80c5d63f5fb14da409d5762696549124ab3e09c7aedcc874c52b67fc9aa4",
+   "tags": []
+  },
+  {
+   "bytes": 495,
+   "detail": "is:is->==",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       1339,
+       1340
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/snowflake.py"
+    }
+   ],
+   "id": "h339",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/snowflake.py"
+   ],
+   "sha256": "22445d4b83c7fa1af20504d49894a92c7ade15b6c6ce39982cecb36fd9f78daf",
+   "tags": []
+  },
+  {
+   "bytes": 415,
+   "detail": "-",
+   "family": "cmp_swap",
+   "files": [
+    {
+     "lines": [
+      [
+       2581,
+       2582
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parser.py"
+    }
+   ],
+   "id": "h340",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parser.py#5"
+   ],
+   "sha256": "b7d86dbc0e75bddbeb802d71e4221457633584be49a1dbe6cf37f8ffbcbc84ef",
+   "tags": []
+  },
+  {
+   "bytes": 722,
+   "detail": "format_patch_header",
+   "family": "malformed",
+   "files": [
+    {
+     "lines": [
+      [
+       198,
+       199
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/expressions/temporal.py"
+    }
+   ],
+   "id": "h341",
+   "labellable": true,
+   "regions": [
+    "sqlglot/expressions/temporal.py#0"
+   ],
+   "sha256": "8f7b00f3b87ae7de9d279f6a587034c273241744f7b53c41c4a9e819ac146c8a",
+   "tags": []
+  },
+  {
+   "bytes": 227,
+   "detail": "after_return_dead",
+   "family": "insert_branch",
+   "files": [
+    {
+     "lines": [
+      [
+       85,
+       85
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/time.py"
+    }
+   ],
+   "id": "h342",
+   "labellable": true,
+   "regions": [
+    "sqlglot/time.py"
+   ],
+   "sha256": "a97859f37bc41c94f324e1ca9c5a8e4749c93b5c9b3b2a7e2f62f3709c823265",
+   "tags": []
+  },
+  {
+   "bytes": 384,
+   "detail": "unhashable_set",
+   "family": "literal_init_error",
+   "files": [
+    {
+     "lines": [
+      [
+       13,
+       14
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/optimizer/scope.py"
+    }
+   ],
+   "id": "h343",
+   "labellable": true,
+   "regions": [
+    "sqlglot/optimizer/scope.py"
+   ],
+   "sha256": "e07376c232ce6e5d878e8faa8b511e76d514a5ccd17fd5f776c7ac86ff0c655a",
+   "tags": []
+  },
+  {
+   "bytes": 485,
+   "detail": "boolop:or->and",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       19,
+       20
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/dremio.py"
+    }
+   ],
+   "id": "h344",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/dremio.py"
+   ],
+   "sha256": "aec66f6d57ea00d29590919428125a433a9022c88073018ce0555c901a8a8c3e",
+   "tags": []
+  },
+  {
+   "bytes": 486,
+   "detail": "-",
+   "family": "class_literal",
+   "files": [
+    {
+     "lines": [
+      [
+       716,
+       717
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generator.py"
+    }
+   ],
+   "id": "h345",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generator.py#1"
+   ],
+   "sha256": "6ebfe3a8bd2671e2e81a16d2ddcf49fae7fdd01eaa3c15c7790b465227458016",
+   "tags": []
+  },
+  {
+   "bytes": 315,
+   "detail": "alter_name",
+   "family": "import_edit",
+   "files": [
+    {
+     "lines": [
+      [
+       11,
+       12
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parser.py"
+    }
+   ],
+   "id": "h346",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parser.py#0"
+   ],
+   "sha256": "b82733fb18f54b9a986b61a3cfc7ffad5e8979ad498f9c425e6360f512a4f220",
+   "tags": []
+  },
+  {
+   "bytes": 107,
+   "detail": "mode_exec",
+   "family": "file_ops",
+   "files": [
+    {
+     "lines": [],
+     "op": "mode",
+     "path": "tests/dialects/test_dremio.py"
+    }
+   ],
+   "id": "h347",
+   "labellable": true,
+   "regions": [
+    "tests/dialects/test_dremio.py"
+   ],
+   "sha256": "92de7e84f07ff91931eedc24d597ee1867a1cd9f2b53189dbba187cd4ad29c80",
+   "tags": []
+  },
+  {
+   "bytes": 813,
+   "detail": "any_return",
+   "family": "compound_eq",
+   "files": [
+    {
+     "lines": [
+      [
+       10241,
+       10242
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parser.py",
+     "role": "cmp_swap"
+    },
+    {
+     "lines": [
+      [
+       1708,
+       1709
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/expressions/query.py",
+     "role": "producer:lock"
+    }
+   ],
+   "id": "h348",
+   "labellable": true,
+   "regions": [
+    "sqlglot/expressions/query.py#3",
+    "sqlglot/parser.py#20"
+   ],
+   "sha256": "417a9a447fc8de37ebbae52188490df4e1bce6c8f0eb4a89be84c66c5878c1f6",
+   "tags": []
+  },
+  {
+   "bytes": 332,
+   "detail": "-",
+   "family": "delete_line",
+   "files": [
+    {
+     "lines": [
+      [
+       15,
+       16
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/dune.py"
+    }
+   ],
+   "id": "h349",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/dune.py"
+   ],
+   "sha256": "d9deded6a0ff4ff4673e8fe3c0f5c49eb742ecd5c30b798a8c2b8a4780f25ca1",
+   "tags": []
+  },
+  {
+   "bytes": 474,
+   "detail": "in:in->not in",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       43,
+       44
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/tableau.py"
+    }
+   ],
+   "id": "h350",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/tableau.py"
+   ],
+   "sha256": "c603f8e7f56405b969acaea062fb94cf177d7591a5e0fe07133396de37f95cf1",
+   "tags": []
+  },
+  {
+   "bytes": 489,
+   "detail": "early_stmt",
+   "family": "insert_branch",
+   "files": [
+    {
+     "lines": [
+      [
+       725,
+       725
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h351",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#1"
+   ],
+   "sha256": "6ff925e9789536562ece85eb924052ea643033bed01efe2e32074c2f04c53066",
+   "tags": []
+  },
+  {
+   "bytes": 319,
+   "detail": "cycle",
+   "family": "import_edit",
+   "files": [
+    {
+     "lines": [
+      [
+       6,
+       6
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/errors.py"
+    }
+   ],
+   "id": "h352",
+   "labellable": true,
+   "regions": [
+    "sqlglot/errors.py"
+   ],
+   "sha256": "b12269c74510c2fbb74e6ace8d081f4cdf3ba0d153a10ffb81621fa8ee8a7c64",
+   "tags": []
+  },
+  {
+   "bytes": 195,
+   "detail": "latin1_new_file",
+   "family": "malformed",
+   "files": [
+    {
+     "lines": [],
+     "op": "add",
+     "path": "sqlglot/br_maple_latin1.py"
+    }
+   ],
+   "id": "h353",
+   "labellable": true,
+   "regions": [
+    "sqlglot/br_maple_latin1.py"
+   ],
+   "sha256": "de6978797f1628d9af805a05ccc6d2dca5882e5ece1405a3d9089a248161b05f",
+   "tags": []
+  },
+  {
+   "bytes": 333,
+   "detail": "large_dict_remove",
+   "family": "class_table",
+   "files": [
+    {
+     "lines": [
+      [
+       992,
+       993
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/dialects/dialect.py"
+    }
+   ],
+   "id": "h354",
+   "labellable": true,
+   "regions": [
+    "sqlglot/dialects/dialect.py#1"
+   ],
+   "sha256": "4a487148ee684cfb47d52bf2f22be7ef755fb1bfa32af2c1f36a002828bb0459",
+   "tags": []
+  },
+  {
+   "bytes": 358,
+   "detail": "-",
+   "family": "delete_line",
+   "files": [
+    {
+     "lines": [
+      [
+       185,
+       186
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/optimizer/scope.py"
+    }
+   ],
+   "id": "h355",
+   "labellable": true,
+   "regions": [
+    "sqlglot/optimizer/scope.py"
+   ],
+   "sha256": "1e4097d9d0f4a70cc690442d9712e9f1fb02b8defcdb526d2d16555269a8f652",
+   "tags": []
+  },
+  {
+   "bytes": 167,
+   "detail": "rename_module",
+   "family": "file_ops",
+   "files": [
+    {
+     "lines": [],
+     "op": "rename",
+     "path": "sqlglot/parsers/trino.py",
+     "to": "sqlglot/parsers/trino_old.py"
+    }
+   ],
+   "id": "h356",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/trino.py",
+    "sqlglot/parsers/trino_old.py"
+   ],
+   "sha256": "ca13af8822db6dd1fe51c49e26955c628cb66cefca387e7283070595c5cbbf68",
+   "tags": []
+  },
+  {
+   "bytes": 637,
+   "detail": "blank+raise",
+   "family": "compound_mixed",
+   "files": [
+    {
+     "lines": [
+      [
+       114,
+       114
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/executor/python.py"
+    },
+    {
+     "lines": [
+      [
+       31,
+       31
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/trie.py"
+    }
+   ],
+   "id": "h357",
+   "labellable": true,
+   "regions": [
+    "sqlglot/executor/python.py",
+    "sqlglot/trie.py"
+   ],
+   "sha256": "b277996235a9d1e9d906a856f4e6d6246781bf89ef9d45be05159bb1ef77a6c8",
+   "tags": []
+  },
+  {
+   "bytes": 434,
+   "detail": "is:is not->!=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       3954,
+       3955
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h358",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#7"
+   ],
+   "sha256": "f5da4357be7d42e09eea4bd79312cc3053a7a30899f36fca66362275855fc8d6",
+   "tags": []
+  },
+  {
+   "bytes": 10502,
+   "detail": "delete_fixture",
+   "family": "file_ops",
+   "files": [
+    {
+     "lines": [],
+     "op": "delete",
+     "path": "tests/fixtures/optimizer/eliminate_joins.sql"
+    }
+   ],
+   "id": "h359",
+   "labellable": true,
+   "regions": [
+    "tests/fixtures/optimizer/eliminate_joins.sql"
+   ],
+   "sha256": "bf10f0518fe038dd40937d6edd15d657954f7738837a3026ce21c341994b012d",
+   "tags": []
+  },
+  {
+   "bytes": 466,
+   "detail": "add_lru_cache",
+   "family": "shared_state",
+   "files": [
+    {
+     "lines": [
+      [
+       7,
+       7
+      ],
+      [
+       9,
+       9
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/time.py"
+    }
+   ],
+   "id": "h360",
+   "labellable": true,
+   "regions": [
+    "sqlglot/time.py"
+   ],
+   "sha256": "e248faa4d5f696ed76dbe46976263872bc3da385c15fd9b5d09f9653d3a7412b",
+   "tags": []
+  },
+  {
+   "bytes": 520,
+   "detail": "binary_gz",
+   "family": "malformed",
+   "files": [
+    {
+     "lines": [],
+     "op": "binary",
+     "path": "tests/fixtures/optimizer/tpc-ds/reason.csv.gz"
+    }
+   ],
+   "id": "h361",
+   "labellable": true,
+   "regions": [
+    "tests/fixtures/optimizer/tpc-ds/reason.csv.gz"
+   ],
+   "sha256": "1f9e23114ef2b9bbdfc890987ffae59b8306f9bcc46909274124c2eecefbd6f3",
+   "tags": []
+  },
+  {
+   "bytes": 465,
+   "detail": "module_table_mutate",
+   "family": "shared_state",
+   "files": [
+    {
+     "lines": [
+      [
+       713,
+       713
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h362",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#1"
+   ],
+   "sha256": "07974f9b42acc661e118ca7d715020c17cb0dcd948f0c7eb2a83e21d5c9a4646",
+   "tags": []
+  },
+  {
+   "bytes": 527,
+   "detail": "eq:==->!=",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       163,
+       164
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/databricks.py"
+    }
+   ],
+   "id": "h363",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/databricks.py"
+   ],
+   "sha256": "251c3c4aa2085aae0ff6611fe1c1a5a7f2f35a8b15544b5831aaf729ba9e0358",
+   "tags": []
+  },
+  {
+   "bytes": 766,
+   "detail": "format_patch_header",
+   "family": "malformed",
+   "files": [
+    {
+     "lines": [
+      [
+       272,
+       273
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/hive.py"
+    }
+   ],
+   "id": "h364",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/hive.py"
+   ],
+   "sha256": "57ca0d8882208ef5196cad2baa403d3280afa89e2908bd7759d3bfda6e9eba2c",
+   "tags": []
+  },
+  {
+   "bytes": 469,
+   "detail": "early_stmt",
+   "family": "insert_branch",
+   "files": [
+    {
+     "lines": [
+      [
+       1117,
+       1117
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/optimizer/qualify_columns.py"
+    }
+   ],
+   "id": "h365",
+   "labellable": true,
+   "regions": [
+    "sqlglot/optimizer/qualify_columns.py#2"
+   ],
+   "sha256": "bb77294c12ec6a983adb83e346e37f84fc9e2047165d3443b149919d98f7b38a",
+   "tags": []
+  },
+  {
+   "bytes": 393,
+   "detail": "copy:copy=False->True",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       625,
+       626
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h366",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/duckdb.py#1"
+   ],
+   "sha256": "9330b9af17da8bb0f1f0b982a626a8aa5733157c4948cee56b9e6ee1919b7446",
+   "tags": []
+  },
+  {
+   "bytes": 365,
+   "detail": "set_add",
+   "family": "class_table",
+   "files": [
+    {
+     "lines": [
+      [
+       255,
+       256
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/hive.py"
+    }
+   ],
+   "id": "h367",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/hive.py"
+   ],
+   "sha256": "ea6bd136db3ee5785c904931d4d65e29e3dcc0b10b8dc390abb625913ff5c6d2",
+   "tags": []
+  },
+  {
+   "bytes": 279,
+   "detail": "test_syntax",
+   "family": "test_edit",
+   "files": [
+    {
+     "lines": [
+      [
+       1,
+       2
+      ]
+     ],
+     "op": "modify",
+     "path": "tests/test_helper.py"
+    }
+   ],
+   "id": "h368",
+   "labellable": true,
+   "regions": [
+    "tests/test_helper.py"
+   ],
+   "sha256": "fd2a8612c4b741c3f76c4495bb518bd9dc0197e14ef0f57d1e787cf580b2b667",
+   "tags": []
+  },
+  {
+   "bytes": 505,
+   "detail": "bad_counts",
+   "family": "malformed",
+   "files": [
+    {
+     "lines": [
+      [
+       4512,
+       4513
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/duckdb.py"
+    }
+   ],
+   "id": "h369",
+   "labellable": false,
+   "regions": [
+    "sqlglot/generators/duckdb.py#9"
+   ],
+   "sha256": "a570312ffbe7a0dd4a4e8be32996739896033ce3f18d44add65683feb33ac558",
+   "tags": []
+  },
+  {
+   "bytes": 462,
+   "detail": "fixture_sql",
+   "family": "test_edit",
+   "files": [
+    {
+     "lines": [
+      [
+       202,
+       203
+      ]
+     ],
+     "op": "modify",
+     "path": "tests/fixtures/optimizer/qualify_tables.sql"
+    }
+   ],
+   "id": "h370",
+   "labellable": true,
+   "regions": [
+    "tests/fixtures/optimizer/qualify_tables.sql"
+   ],
+   "sha256": "90c79bf07697e97b2a4ca314de415cee565de8b3f9dcce77ce3420096598e743",
+   "tags": []
+  },
+  {
+   "bytes": 541,
+   "detail": "tuple_list_key",
+   "family": "literal_init_error",
+   "files": [
+    {
+     "lines": [
+      [
+       476,
+       477
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/generators/snowflake.py"
+    }
+   ],
+   "id": "h371",
+   "labellable": true,
+   "regions": [
+    "sqlglot/generators/snowflake.py"
+   ],
+   "sha256": "03deda50f88695745db223669deda244ffc14e748fcc1f3855e933cca362e45b",
+   "tags": []
+  },
+  {
+   "bytes": 435,
+   "detail": "counter_degrade:5000",
+   "family": "shared_state",
+   "files": [
+    {
+     "lines": [
+      [
+       1,
+       1
+      ],
+      [
+       58,
+       58
+      ]
+     ],
+     "op": "modify",
+     "path": "tests/helpers.py"
+    }
+   ],
+   "id": "h372",
+   "labellable": true,
+   "regions": [
+    "tests/helpers.py#0",
+    "tests/helpers.py#1"
+   ],
+   "sha256": "c67251e120e3468f99d048386cf0870fd32aed10368dc6d41808e4e451073dd1",
+   "tags": []
+  },
+  {
+   "bytes": 460,
+   "detail": "boolop:and->or",
+   "family": "m0_op",
+   "files": [
+    {
+     "lines": [
+      [
+       847,
+       848
+      ]
+     ],
+     "op": "modify",
+     "path": "sqlglot/parsers/snowflake.py"
+    }
+   ],
+   "id": "h373",
+   "labellable": true,
+   "regions": [
+    "sqlglot/parsers/snowflake.py"
+   ],
+   "sha256": "09086a8a8a2aa5e5859a6d10f90847cadeac5e8e4c6aba83e089494ee2ff4e78",
+   "tags": []
+  }
+ ],
+ "pinned_commit": "eb11aec4be8cb2122afe713a4816662c3f0fb2fa",
+ "python": "3.13",
+ "seed": 2102,
+ "set_sha256": "d41b101f8baa861ef5adca3ae33dca0c2021247b78f4f17da479a67108512b5c",
+ "source_digest": "3671af10049781ea6a8938ed3b2769fb4b0b835e98f13f05a5729f78f3ee6b83",
+ "split": "holdout",
+ "split_rule": {
+  "bucket_lines": 500,
+  "bucket_overrides": {
+   "tests/helpers.py": 40
+  },
+  "bucketed_prefixes": [
+   "sqlglot/expressions/"
+  ],
+  "holdout_only_families": [
+   "literal_init_error",
+   "shared_state",
+   "compound_eq"
+  ],
+  "huge_lines": 1500,
+  "rule": "region = path, or path#((line-1)//bucket) for files >= huge_lines lines, under bucketed_prefixes or in bucket_overrides; new files: their own path. dev iff int(sha256(salt+region)[:8], 16) % 2 == 0. Every region a patch touches is in its set.",
+  "salt": "blast-radius-v2-split-1|"
+ },
+ "unlabellable": [
+  "h008",
+  "h127",
+  "h143",
+  "h253",
+  "h369"
+ ]
+}
