@@ -13,7 +13,7 @@ import posixpath
 import re
 import sys
 
-from . import pyast
+from . import pyast, tpc_fixture
 from .patch import PatchError, apply, misplaced_hunk
 
 try:
@@ -49,6 +49,13 @@ def strict_paths():
     somewhere else than its old line number implies (git apply goes by the new line number),
     selects every test."""
     return os.environ.get("BR_STRICT_PATHS") == "1"
+
+
+def tpc_fixture_flag():
+    """BR_TPC_FIXTURE=1: a plain edit of tpc-h.sql or tpc-ds.sql keeps only the TestExecutor
+    tests whose part of the loaded pairs can change (selector/tpc_fixture.py); the other
+    executor tests only need setUpClass to load the file. Read on every call."""
+    return os.environ.get("BR_TPC_FIXTURE") == "1"
 
 
 def _exact_case(src_root, path):
@@ -149,6 +156,19 @@ def source_root(path):
         _SOURCE_ROOT.reset(token)
 
 
+# Every FilePatch of the commit being analysed, for BR_TPC_FIXTURE's commit-level checks.
+_FILE_PATCHES = contextvars.ContextVar("br_file_patches", default=None)
+
+
+@contextlib.contextmanager
+def commit_files(file_patches):
+    token = _FILE_PATCHES.set(tuple(file_patches))
+    try:
+        yield
+    finally:
+        _FILE_PATCHES.reset(token)
+
+
 def commit_impact(file_patches, src_root, maps, import_refiner=None, import_probe=None):
     """Tests a patch can affect, as a Result.
 
@@ -177,7 +197,7 @@ def commit_impact(file_patches, src_root, maps, import_refiner=None, import_prob
             found = _kills_process(fp)
             if found:
                 raise Everything(f"{fp.path}: adds a process-killing call ({found.strip()})")
-    with source_root(src_root):
+    with source_root(src_root), commit_files(file_patches):
         return _commit_impact(file_patches, src_root, maps, import_refiner, import_probe)
 
 
@@ -370,7 +390,17 @@ def _modified(fp, path, src_root, maps, res, import_refiner):
             # (Nothing under the pinned sqlglot opens a data file at import, so data files
             # elsewhere, fixtures and docs, cannot change whether sqlglot imports.)
             res.probe_blockers.append(f"{path}: package data changed")
-        res.add(maps.reads(path), f"{path}: data readers")
+        bits, note = maps.reads(path), f"{path}: data readers"
+        if tpc_fixture_flag() and path in tpc_fixture.FIXTURES:
+            try:
+                narrowed, why = tpc_fixture.narrow(fp, path, old, src_root, maps, _FILE_PATCHES.get(), read_src)
+            except Exception as error:  # noqa: BLE001 - not understood: every reader
+                narrowed, why = None, f"failed ({error!r})"
+            if narrowed is None:
+                note = f"{note} (TPC fixture narrowing off: {why})"
+            else:
+                bits, note = narrowed, why
+        res.add(bits, note)
         if _watched(path):
             res.nontrivial = True
         return
