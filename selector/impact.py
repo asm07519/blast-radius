@@ -63,6 +63,21 @@ def _watched(path):
     return path.startswith(WATCHED) or ("/" not in path and path.endswith(".py"))
 
 
+def normal_path(path):
+    """True for a repository-relative path in the form git writes and the maps use.
+
+    `sqlglot//x.py`, `./sqlglot/x.py`, `sqlglot/./x.py`, `a/../b`, absolute paths, backslashes and
+    empty or trailing components all name a file the maps would not find by that spelling, so
+    every lookup would miss and select nothing. They are never normalised: a patch spelled like
+    that is not understood (git never emits one).
+    """
+    if not isinstance(path, str) or not path or "\\" in path or "\0" in path:
+        return False
+    if path.startswith("/") or path != posixpath.normpath(path):
+        return False
+    return all(part not in ("", ".", "..") for part in path.split("/"))
+
+
 def commit_impact(file_patches, src_root, maps, import_refiner=None, import_probe=None):
     """Tests a patch can affect, as a Result.
 
@@ -71,6 +86,10 @@ def commit_impact(file_patches, src_root, maps, import_refiner=None, import_prob
     module some test imports, with all of `patched` overlaid (selector/import_probe.py). It is
     called at most once per commit, after every file has been analysed (PRD §6 rule 4).
     """
+    for fp in file_patches:
+        for p in (fp.old_path, fp.new_path):
+            if p is not None and not normal_path(p):
+                raise Everything(f"{p!r}: path not in normal form")
     res = Result()
     seen = set()
     for fp in file_patches:
