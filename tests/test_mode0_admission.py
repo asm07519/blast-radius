@@ -55,7 +55,7 @@ def entry(n, s=0.01, cpu=0.01, proc=0.1, **kw):
 
 
 def elig_file(tests, src, entries=None, **header):
-    h = {"python": PY, "implementation": sys.implementation.name,
+    h = {"python": PY, "implementation": sys.implementation.name, "machine": os.uname().machine,
          "engines": {"unittest": {"python": PY}, "pytest": {"python": PY, "pytest": "9"}},
          "source_digest": m0.source_digest(src), "tests_identity": m0.tests_identity(tests),
          "runner_digest": m0.runner_digest(), "runs": RUNS, "seeds": [0, 1], "also_batch": True}
@@ -235,7 +235,8 @@ class EligibilityTest(TmpDir):
         self.refused(dict(good, schema="br-mode0-eligibility/2"))
         for key, value in (("runner_digest", "0" * 64), ("source_digest", "0" * 64),
                            ("tests_identity", "0" * 64), ("python", "2.7.18"), ("python", None),
-                           ("python", "garbage"), ("implementation", "pypy"), ("also_batch", False),
+                           ("python", "garbage"), ("implementation", "pypy"), ("machine", "vax"),
+                           ("also_batch", False),
                            ("runs", [{"name": "iso"}]), ("runs", "iso"),
                            ("engines", {"unittest": {}})):
             with self.subTest(key=key, value=value):

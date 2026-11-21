@@ -49,7 +49,8 @@ Eligibility (`load_eligibility`, file from tools/mode0_eligibility.py)
 ----------------------------------------------------------------------
 Loaded lazily, once. The whole file is refused (Mode 0 off for the run, one log line) when the
 schema is unknown, runner digest, tests identity or source digest differ, the Python
-major.minor differs from this interpreter, the configured engine (or, for unittest, pytest)
+major.minor (or implementation, or recorded machine architecture) differs from this
+interpreter, the configured engine (or, for unittest, pytest)
 was not certified, the file has no order (batch) or seed certification, or it does not parse.
 A test (looked up by id, never by number) is eligible when, for every certified engine, every
 certification run (production launch and each hash seed) passed with no flag other than the
@@ -253,6 +254,9 @@ def load_eligibility(path, tests, src_root, engine, overlay="memory", python=Non
     impl = header.get("implementation")
     if impl is not None and impl != sys.implementation.name:
         raise Refused(f"implementation {impl}")
+    machine = header.get("machine")
+    if machine is not None and hasattr(os, "uname") and machine != os.uname().machine:
+        raise Refused(f"certified on {machine}")  # e.g. a Mac file on the linux/amd64 server
     if header.get("runner_digest") != m0.runner_digest():
         raise Refused("runner digest differs")
     if header.get("tests_identity") != m0.tests_identity(tests):
