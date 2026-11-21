@@ -7,6 +7,7 @@ import os
 import shutil
 import tempfile
 import unittest
+import unittest.mock
 
 from selector import impact
 from selector.patch import parse
@@ -104,6 +105,51 @@ class CommitImpactPathTest(unittest.TestCase):
             patch_for("sqlglot//dialects/tsql.py", "sqlglot//dialects/tsql.py")
         with self.assertRaises(impact.Everything):
             self.impact(data)
+
+
+class StrictPathsTest(unittest.TestCase):
+    """BR_STRICT_PATHS=1: names git apply -p1 could read differently select every test."""
+
+    BODY = "@@ -1,2 +1,2 @@\n def f():\n-    return 1\n+    return 2\n"
+
+    def odd(self, text):
+        return [fp.odd for fp in parse(text.encode())]
+
+    def test_plain_names_are_not_odd(self):
+        p = "sqlglot/dialects/tsql.py"
+        self.assertEqual(self.odd(f"diff --git a/{p} b/{p}\n--- a/{p}\n+++ b/{p}\n" + self.BODY), [None])
+        self.assertEqual(self.odd(f"--- a/{p}\t2026-01-01\n+++ b/{p}\t2026-01-01\n" + self.BODY), [None])
+        self.assertEqual(self.odd(f"diff --git a/{p} b/{p}\nnew file mode 100644\n--- /dev/null\n+++ b/{p}\n"
+                                  + "@@ -0,0 +1 @@\n+x = 1\n"), [None])
+        self.assertEqual(self.odd(f"diff --git a/{p} b/x.py\nrename from {p}\nrename to x.py\n"
+                                  f"--- a/{p}\n+++ b/x.py\n" + self.BODY), [None])
+
+    def test_odd_names(self):
+        p = "sqlglot/dialects/tsql.py"
+        for text in (
+            f"diff --git x/{p} y/{p}\n--- x/{p}\n+++ y/{p}\n" + self.BODY,
+            f"diff --git {p} {p}\n--- {p}\n+++ {p}\n" + self.BODY,
+            f"--- x/{p}\n+++ y/{p}\n" + self.BODY,
+            f"diff --git a/{p} b/{p}\n--- a/{p}\n+++ b/{p}   \n" + self.BODY,
+            f"diff --git a/{p} b/{p}\n--- a/{p}\n+++ b/sqlglot/parser.py\n" + self.BODY,
+        ):
+            with self.subTest(text=text.splitlines()[:3]):
+                self.assertTrue(self.odd(text)[0])
+
+    def test_flag(self):
+        src = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, src, True)
+        p = "sqlglot/dialects/tsql.py"
+        fps = parse((f"diff --git x/{p} y/{p}\n--- x/{p}\n+++ y/{p}\n" + self.BODY).encode())
+        missing = parse((f"diff --git a/{p} b/{p}\n--- a/{p}\n+++ b/{p}\n" + self.BODY).encode())
+        with unittest.mock.patch.dict(os.environ, {"BR_STRICT_PATHS": "1"}):
+            for case, word in ((fps, "a/ and b/"), (missing, "does not have")):
+                with self.assertRaises(impact.Everything) as caught:
+                    impact.commit_impact(case, src, Maps())
+                self.assertIn(word, str(caught.exception))
+        with unittest.mock.patch.dict(os.environ):
+            os.environ.pop("BR_STRICT_PATHS", None)
+            self.assertFalse(impact.strict_paths())
 
 
 if __name__ == "__main__":

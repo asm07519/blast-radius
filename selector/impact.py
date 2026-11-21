@@ -42,6 +42,13 @@ def crash_guard():
     return os.environ.get("BR_CRASH_GUARD") == "1"
 
 
+def strict_paths():
+    """BR_STRICT_PATHS=1: a patch whose file names git apply could read differently than we do
+    (other prefixes than a/ b/, spaces around a name, header disagreement), or that modifies,
+    renames or deletes a file the pinned tree does not have, selects every test."""
+    return os.environ.get("BR_STRICT_PATHS") == "1"
+
+
 def _kills_process(fp):
     path = fp.path or ""
     if not path.endswith(".py"):
@@ -140,6 +147,12 @@ def commit_impact(file_patches, src_root, maps, import_refiner=None, import_prob
         for p in (fp.old_path, fp.new_path):
             if p is not None and not normal_path(p):
                 raise Everything(f"{p!r}: path not in normal form")
+    if strict_paths():
+        for fp in file_patches:
+            if fp.odd:
+                raise Everything(f"{fp.path!r}: {fp.odd}")
+            if fp.old_path is not None and not fp.mode_only and read_src(src_root, fp.old_path) is None:
+                raise Everything(f"{fp.old_path}: changes a file the pinned tree does not have")
     if crash_guard():
         for fp in file_patches:
             found = _kills_process(fp)

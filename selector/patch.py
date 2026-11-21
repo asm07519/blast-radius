@@ -33,6 +33,7 @@ class FilePatch:
         self.binary = False
         self.mode_only = False
         self.header = []
+        self.odd = None  # why git apply -p1 may read the names differently than we do
 
     @property
     def path(self):
@@ -53,6 +54,22 @@ def _strip(path):
     if path[:2] in (b"a/", b"b/"):
         path = path[2:]
     return path.decode("utf-8", "surrogateescape")
+
+
+def _odd_name(raw):
+    """A reason when the ---/+++ name `raw` is not `a/x`, `b/x` or /dev/null spelled plainly.
+
+    git apply -p1 drops the first component whatever it is, and keeps spaces around a name."""
+    name = raw.rstrip(b"\r\n")
+    if b"\t" in name:
+        name = name.split(b"\t", 1)[0]
+    if name != name.strip():
+        return "space around a file name"
+    if name.startswith(b'"') and name.endswith(b'"') and len(name) > 1:
+        name = name[1:-1]
+    if name != b"/dev/null" and name[:2] not in (b"a/", b"b/"):
+        return "file name without the a/ or b/ prefix"
+    return None
 
 
 def parse(data):
@@ -100,6 +117,9 @@ def parse(data):
             if m:
                 cur.old_path = _strip(m.group(1))
                 cur.new_path = _strip(m.group(2))
+                cur.git_names = (cur.old_path, cur.new_path)
+            else:
+                cur.odd = "diff --git names without a/ and b/"
             i += 1
             continue
         if line.startswith(b"--- ") and i + 1 < n and lines[i + 1].startswith(b"+++ "):
@@ -108,6 +128,11 @@ def parse(data):
                 patches.append(cur)
             cur.old_path = _strip(line[4:])
             cur.new_path = _strip(lines[i + 1][4:])
+            cur.odd = cur.odd or _odd_name(line[4:]) or _odd_name(lines[i + 1][4:])
+            names = getattr(cur, "git_names", None)
+            if names and ((cur.old_path is not None and cur.old_path != names[0])
+                          or (cur.new_path is not None and cur.new_path != names[1])):
+                cur.odd = cur.odd or "---/+++ names differ from the diff --git line"
             hunk = None
             i += 2
             continue
