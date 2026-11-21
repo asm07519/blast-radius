@@ -803,6 +803,17 @@ REVIEW_FILES = {
     "sqlglot/__init__.py": "",
     "sqlglot/core.py": "def value():\n    return 1\n\n\ndef boom():\n    raise ValueError('x')\n",
     "sqlglot/flags.py": "OK = True\n",
+    "sqlglot/logs.py": "import logging\n\nlogger = logging.getLogger('sqlglot')\n\n\ndef f():\n    return 1\n",
+    "tests/test_logs.py": '''
+        import unittest
+
+        from sqlglot import logs
+
+
+        class TestLogs(unittest.TestCase):
+            def test_f(self):
+                self.assertEqual(logs.f(), 1)
+    ''',
     "tests/__init__.py": "",
     "tests/test_sticky.py": '''
         import os
@@ -1162,6 +1173,15 @@ class ReviewMixin:
         got = {i: res["lines"][i]["outcome"] for i in ids}
         self.assertEqual(got, {ids[0]: "passed", ids[1]: "passed", ids[2]: "passed",
                                ids[3]: "failed", ids[4]: "passed"}, res["lines"])
+
+    def test_f4_logging_error_fails_like_pytest(self):  # review-admission2 a13_logging
+        # pytest's LogCaptureHandler re-raises a formatting error (bad %-arity) in the phase
+        tid = "tests/test_logs.py::TestLogs::test_f"
+        self.assertEqual(self.run_ids([tid])["outcomes"][tid], "passed")
+        bad = ("import logging\n\nlogger = logging.getLogger('sqlglot')\n\n\n"
+               "def f():\n    logger.warning('%s %s', 1)\n    return 1\n")
+        res = self.run_ids([tid], patched=self.repo.patched("sqlglot/logs.py", bad))
+        self.assertEqual(res["lines"][tid]["outcome"], "failed", res["lines"][tid])
 
     def test_f5_class_collection_error_fails_the_file(self):  # e8
         tid = "tests/test_collect.py::TestA::test_ok"

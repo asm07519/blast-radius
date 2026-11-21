@@ -99,7 +99,9 @@ setUpClass), call and teardown (tearDownClass/tearDownModule) and around collect
 unraisable / thread exceptions turned into warnings after each phase (they fail the phase only
 when the filter in force is "error", as in 9.2), sys.stdin that raises on read like pytest's
 DontReadFromInput, sys.stdout/sys.stderr replaced (utf-8, errors="replace", not the original
-objects), root logger handlers installed (so logging.basicConfig is a no-op, as under pytest),
+objects), root logger handlers installed (so logging.basicConfig is a no-op, as under pytest)
+and, per setup/call/teardown phase, two LogCaptureHandler-like handlers that format every
+record and re-raise a formatting error (a bad %-arity log call fails the test, as in pytest),
 faulthandler enabled, PYTEST_CURRENT_TEST / PYTEST_VERSION set, the site builtins (exit, quit,
 help, ...). Both engines run every phase at a Python frame depth and C recursion depth padded
 to at least the organisers' (measured: test body 32 frames, setUpClass 41, module import 38;
@@ -913,9 +915,11 @@ def _wrap_session_calls(ctx):
         call.__name__ = name
         return call
 
+    native = sys.modules.get("posix")
     for name in _SESSION_CALLS:
-        if hasattr(os, name):
-            setattr(os, name, denied(name))
+        for mod in (os, native):
+            if mod is not None and hasattr(mod, name):
+                setattr(mod, name, denied(name))
     for name in ("posix_spawn", "posix_spawnp"):
         original = getattr(os, name, None)
         if original is None:
@@ -1787,11 +1791,19 @@ def _pytest_like_process(site):
         faulthandler.enable(file=os.dup(2))
     except Exception:
         pass
-    root = logging.getLogger()
-    root.addHandler(logging.NullHandler())
-    devnull = logging.FileHandler(os.devnull, mode="w", encoding="UTF-8")
-    devnull.setFormatter(logging.Formatter("%(levelname)-8s %(name)s:%(filename)s:%(lineno)d %(message)s"))
-    root.addHandler(devnull)
+    class QuietFileHandler(logging.FileHandler):  # _pytest.logging._FileHandler
+        def handleError(self, record):
+            pass
+
+    class QuietNullHandler(logging.NullHandler):  # _LiveLoggingNullHandler
+        def handleError(self, record):
+            pass
+
+    devnull = QuietFileHandler(os.devnull, mode="w", encoding="UTF-8")
+    devnull.setFormatter(logging.Formatter(_LOG_FORMAT))
+    for handler in (QuietNullHandler(), devnull):
+        for logger in _log_targets(logging):
+            logger.addHandler(handler)
     for d in site:
         try:
             for n in os.listdir(d):
@@ -1819,6 +1831,62 @@ def _pytest_like_process(site):
     sys.unraisablehook = unraisable
     threading.excepthook = thread_exc
     return pending
+
+
+_LOG_FORMAT = "%(levelname)-8s %(name)s:%(filename)s:%(lineno)d %(message)s"
+
+
+def _log_targets(logging):
+    """The root logger and every non-propagating logger (pytest's catching_logs)."""
+    root = logging.getLogger()
+    out = [root]
+    for logger in list(root.manager.loggerDict.values()):
+        if isinstance(logger, logging.Logger) and not logger.propagate and logger is not root:
+            out.append(logger)
+    return out
+
+
+class _LogPhase:
+    """pytest's per-phase log capture (setup, call, teardown): two LogCaptureHandlers (caplog
+    and report) at level NOTSET on the root and every non-propagating logger. They format every
+    record that reaches them and RE-RAISE a formatting error (logging.raiseExceptions), which
+    fails the phase, where plain logging would print "--- Logging error ---" and go on."""
+
+    def __init__(self):
+        import io
+        import logging
+
+        self.logging = logging
+
+        class LogCaptureHandler(logging.StreamHandler):
+            def __init__(self):
+                super().__init__(io.StringIO())
+
+            def reset(self):
+                self.stream = io.StringIO()
+
+            def handleError(self, record):
+                if logging.raiseExceptions:
+                    raise  # noqa: PLE0704 - exactly what pytest does
+
+        self.handlers = [LogCaptureHandler(), LogCaptureHandler()]
+        for h in self.handlers:
+            h.setFormatter(logging.Formatter(_LOG_FORMAT))
+        self.attached = []
+
+    def __enter__(self):
+        for h in self.handlers:
+            h.reset()
+            for logger in _log_targets(self.logging):
+                logger.addHandler(h)
+                self.attached.append((logger, h))
+        return self
+
+    def __exit__(self, *exc):
+        for logger, h in self.attached:
+            logger.removeHandler(h)
+        self.attached.clear()
+        return False
 
 
 class _UnraisableWarning(UserWarning):
@@ -1971,6 +2039,7 @@ def _run_unittest(ids, caps, results, watchdog, ctx, watch, site):
     from unittest.case import _SubTest
 
     pending = _pytest_like_process(site)
+    log_phase = _LogPhase()
     entries = _collect_unittest(ids, ctx.src)
     if "pytest" in sys.modules or "_pytest" in sys.modules:
         # A test module imported pytest: this engine does not reproduce pytest features.
@@ -2104,10 +2173,11 @@ def _run_unittest(ids, caps, results, watchdog, ctx, watch, site):
                 _pytest_warning_filters(warnings)
                 # ---- setup phase: module/class fixtures
                 env["PYTEST_CURRENT_TEST"] = f"{e.id} (setup)"
-                if state["module"] is not e.module:
-                    module_setup(e.module)
-                if state["module_status"][0] == "ok" and state["cls"] is not e.cls:
-                    class_setup(e.cls)
+                with log_phase:
+                    if state["module"] is not e.module:
+                        module_setup(e.module)
+                    if state["module_status"][0] == "ok" and state["cls"] is not e.cls:
+                        class_setup(e.cls)
                 try:
                     phase_warnings()
                 except Exception as error:
@@ -2124,7 +2194,8 @@ def _run_unittest(ids, caps, results, watchdog, ctx, watch, site):
                     env["PYTEST_CURRENT_TEST"] = f"{e.id} (call)"
                     result = Result()
                     try:
-                        _padded(call_case, e, result)
+                        with log_phase:
+                            _padded(call_case, e, result)
                         phase_warnings()
                     except KeyboardInterrupt:
                         raise
@@ -2151,14 +2222,15 @@ def _run_unittest(ids, caps, results, watchdog, ctx, watch, site):
                 env["PYTEST_CURRENT_TEST"] = f"{e.id} (teardown)"
                 e.instance = e.bound = None
                 following = nxt.get(id(e))
-                if following is None or following.cls is not e.cls or following.module is not e.module:
-                    problem = class_teardown()
-                    if problem and outcome in ("passed", "skipped"):
-                        outcome, detail = "error", problem
-                if following is None or following.module is not e.module:
-                    problem = module_teardown()
-                    if problem and outcome in ("passed", "skipped"):
-                        outcome, detail = "error", problem
+                with log_phase:
+                    if following is None or following.cls is not e.cls or following.module is not e.module:
+                        problem = class_teardown()
+                        if problem and outcome in ("passed", "skipped"):
+                            outcome, detail = "error", problem
+                    if following is None or following.module is not e.module:
+                        problem = module_teardown()
+                        if problem and outcome in ("passed", "skipped"):
+                            outcome, detail = "error", problem
                 try:
                     phase_warnings()
                 except Exception as error:
