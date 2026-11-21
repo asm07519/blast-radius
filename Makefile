@@ -3,7 +3,10 @@ TOOLS ?= blast-radius-tools
 SAMPLE := $(CURDIR)/sample
 OUTPUT := $(CURDIR)/output.jsonl
 WORK := $(CURDIR)/work
-JOBS ?= $(shell nproc)
+# CPUs of the Docker VM (on macOS that is not the host's count, and `nproc` may not exist).
+# `docker info` prints 0 (and fails) while the daemon is down.
+JOBS ?= $(shell n=$$(docker info --format '{{.NCPU}}' 2>/dev/null); [ "$$n" -gt 0 ] 2>/dev/null && echo $$n \
+	|| nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)
 MUTANTS ?= 150
 SEED ?= 1
 
@@ -18,15 +21,31 @@ RUN_FLAGS := --rm --platform linux/amd64 --network none --cpus 2 \
 TOOLS_RUN := docker run --rm --platform linux/amd64 -v $(CURDIR)/maps:/app/maps -v $(WORK):/work \
 	-v $(SAMPLE):/sample:ro $(TOOLS)
 
-.PHONY: build sample check tools maps truth-sample mutants truth-mutants eval-mutants
+.PHONY: build sample sample-cpu map-stats check tools maps truth-sample mutants truth-mutants eval-mutants
 
+# Plain progress keeps the [finish] lines of the build-time map repair visible.
 build:
-	docker build --platform linux/amd64 --tag $(IMAGE) .
+	docker build --progress=plain --platform linux/amd64 --tag $(IMAGE) .
 
 # Build, run once on the sample under the scorer's limits, and score.
 sample: build
 	docker run $(RUN_FLAGS) $(IMAGE) > $(OUTPUT)
 	python3 score.py $(SAMPLE) $(SAMPLE)/answers.json $(OUTPUT)
+
+# Like `sample`, plus the CPU of every process in the container (user + system), read from
+# its cgroup v2 cpu.stat as the container's last step. Selector log: work/sample.stderr.
+sample-cpu: build
+	mkdir -p $(WORK)
+	docker run $(RUN_FLAGS) $(IMAGE) sh -c 'python -I -S /app/run.py; rc=$$?; cat /sys/fs/cgroup/cpu.stat >&2; exit $$rc' \
+		> $(OUTPUT) 2> $(WORK)/sample.stderr
+	grep -E '^\[br\] (maps|done)|^usage_usec' $(WORK)/sample.stderr
+	python3 score.py $(SAMPLE) $(SAMPLE)/answers.json $(OUTPUT) \
+		--cpu-seconds $$(awk '$$1 == "usage_usec" { printf "%.6f", $$2 / 1e6 }' $(WORK)/sample.stderr)
+
+# Trust counts of the committed maps, then of the maps inside the built image.
+map-stats:
+	python3 tools/map_stats.py maps/maps.bin
+	docker run --rm --platform linux/amd64 $(IMAGE) python /app/tools/map_stats.py /app/maps/maps.bin
 
 check: build
 	docker run $(RUN_FLAGS) $(IMAGE) > $(OUTPUT)
@@ -47,9 +66,10 @@ maps: tools
 	 && python tools/subtest_cov.py --repo /src/sqlglot \
 		--test tests/test_generator.py::TestGenerator::test_generator_memory --out /work/subtests_genmem.json \
 	 && python tools/exec_phases.py --repo /src/sqlglot --out /work/exec_phases.json \
-	 && python tools/compact_maps.py --tests maps/tests.json --raw /work/maps/raw --out maps/maps.bin \
+	 && python tools/compact_maps.py --tests maps/tests.json --raw /work/maps/raw --out maps/maps.bin.new \
 		--static /work/static.json --classes /work/classes.json --typeprof /work/typeprof.json \
-		--subtests /work/subtests_genmem.json --exec-phases /work/exec_phases.json"
+		--subtests /work/subtests_genmem.json --exec-phases /work/exec_phases.json \
+	 && mv maps/maps.bin.new maps/maps.bin"
 
 # Label the sample with our own runner (must reproduce sample/answers.json).
 truth-sample: tools
