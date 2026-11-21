@@ -1,9 +1,10 @@
 # Blast Radius submission image.
 #
 # Runtime: stdlib-only Python reads /data and prints one JSON line per commit.
-# Build: downloads sqlglot at the pinned commit (the "old" side of every patch)
-# and, only if the committed maps still mark some tests as untrusted, installs
-# the labelling environment from requirements.lock and retraces those tests.
+# Build: downloads sqlglot at the pinned commit (the "old" side of every patch),
+# verifies the committed maps against maps/manifest.json and, only if the maps
+# still mark some tests as untrusted, installs the labelling environment from
+# requirements.lock and retraces those tests.
 FROM python:3.13-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90
 
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -17,7 +18,11 @@ RUN mkdir -p /app/src \
 COPY requirements.lock /app/requirements.lock
 COPY tools /app/tools
 COPY maps /app/maps
-# Optional, bounded and never fatal: see tools/finish_maps.py.
+# Recompute every checksum in maps/manifest.json (maps, catalog, pinned tree, lock file,
+# Python, per-section digests): a corrupted or stale map fails the build here.
+RUN python /app/tools/validate_evidence.py --maps /app/maps/maps.bin --tests /app/maps/tests.json \
+        --manifest /app/maps/manifest.json --repo /app/src --root /app --check-python --allow-untrusted
+# Fallback, bounded and never fatal: a no-op once the committed maps trust every test.
 RUN python /app/tools/finish_maps.py --maps /app/maps/maps.bin --tests /app/maps/tests.json \
         --repo /app/src --requirements /app/requirements.lock --budget 200 \
  && rm -rf /tmp/finish /root/.cache
