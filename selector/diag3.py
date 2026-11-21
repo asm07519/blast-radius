@@ -355,7 +355,7 @@ def add_payload(text, records):
 # costliest commits with cost >= 12 s, in order of (-cost, commit id), one base-16 digit each:
 #   variant A: which heavy tests the answer holds (4 classes) x file group of the largest note (4)
 #   variant B: kind of the largest note (8 classes) x whether its file is dialect-specific/tests (2)
-VARIANT = "A"
+VARIANT = "B"
 MAXN = 5
 RADICES = [16] * MAXN
 T_MAX = "tests/test_parser.py::TestParser::test_max_nodes"
