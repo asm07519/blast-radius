@@ -25,10 +25,11 @@ _COOKIE = re.compile(rb"^[ \t\f]*#.*?coding[:=][ \t]*([-\w.]+)")
 
 
 class Site:
-    __slots__ = ("kind", "lines", "names", "why", "class_path", "literal", "proof", "annotated", "class_heads")
+    __slots__ = ("kind", "lines", "names", "why", "class_path", "literal", "proof", "annotated", "class_heads",
+                 "value_only", "excluded")
 
     def __init__(self, kind, lines=(), names=(), why="", class_path=None, literal=False, proof=None,
-                 annotated=False, class_heads=None):
+                 annotated=False, class_heads=None, value_only=False):
         self.kind = kind
         self.lines = set(lines)
         self.names = set(names)
@@ -44,6 +45,12 @@ class Site:
         self.annotated = annotated
         # For class-body sites: one ClassHead per class on class_path (outermost first).
         self.class_heads = class_heads
+        # An annotated assignment changed in place: same simple Name target, the same annotation
+        # (a plain type expression that does not read the target), only the value differs
+        # (see value_only_annassign; impact.probe_exclusion lets these narrow).
+        self.value_only = value_only
+        # Why impact.probe_exclusion refused to narrow this site (for the commit's notes), or None.
+        self.excluded = None
 
     def __repr__(self):
         ls = sorted(self.lines)
@@ -352,7 +359,7 @@ class Analysis:
         self.sites.append(Site("import", span(o), bound_names(o), why="module/class stmt changed",
                                class_path=_class_path(scope), literal=_literal_change(o, n),
                                annotated=isinstance(o, ast.AnnAssign) or isinstance(n, ast.AnnAssign),
-                               class_heads=_class_heads(scope)))
+                               class_heads=_class_heads(scope), value_only=value_only_annassign(o, n)))
 
     def _diff_def(self, o, n, scope, olds, index, header):
         sig_changed = dump_field(o, "args") != dump_field(n, "args")
@@ -533,6 +540,288 @@ def _literal_change(o, n):
             return _guarded_literal_expr(o.value, n.value, False)
         return _literal_expr(o.value, n.value)
     return False
+
+
+# Nodes of a plain type expression: `t.ClassVar`, `str | None`, `t.ClassVar[dict[str, tuple[str, ...]]]`,
+# `"Forward"`. No call, lambda, walrus, comprehension or starred: evaluating one only looks names
+# up, takes attributes, subscripts typing objects and builds unions.
+_TYPE_EXPR_NODES = (ast.Name, ast.Attribute, ast.Subscript, ast.Constant, ast.Tuple, ast.List, ast.BinOp, ast.BitOr,
+                    ast.Load)
+
+
+def value_only_annassign(o, n):
+    """o and n are annotated assignments that differ at most in their value: the same simple Name
+    target, the same annotation, and that annotation is a plain type expression that does not
+    read the target (CPython stores the value first and evaluates the annotation after it, so
+    `X: X = 1` would see the new value). Whether the values differ only in literals is
+    _literal_change's question."""
+    if not (isinstance(o, ast.AnnAssign) and isinstance(n, ast.AnnAssign)):
+        return False
+    if not (isinstance(o.target, ast.Name) and isinstance(n.target, ast.Name) and o.target.id == n.target.id):
+        return False
+    if o.simple != 1 or n.simple != 1 or o.value is None or n.value is None:
+        return False
+    if dump(o.annotation) != dump(n.annotation):
+        return False
+    for node in ast.walk(o.annotation):
+        if not isinstance(node, _TYPE_EXPR_NODES):
+            return False
+        if isinstance(node, ast.BinOp) and not isinstance(node.op, ast.BitOr):
+            return False
+        if isinstance(node, ast.Name) and node.id == o.target.id:
+            return False
+    return True
+
+
+# --- class statements of a whole module (impact.probe_exclusion's subclass check) ------------
+
+class ClassFacts:
+    """What one class statement passes to class creation besides its body, with names resolved
+    through the module's imports.
+
+    qualname: "A.B" for a class at module level or nested in classes (if/try blocks included),
+              None for a class created inside a function.
+    decorators: (source text, resolved dotted name or None, is a call) per decorator.
+    bases: (dotted source name or None, resolved dotted name or None) per base.
+    keywords, type_params: whether the statement has any.
+    """
+
+    __slots__ = ("qualname", "lineno", "decorators", "bases", "keywords", "type_params")
+
+    def __init__(self, qualname, lineno, decorators, bases, keywords, type_params):
+        self.qualname = qualname
+        self.lineno = lineno
+        self.decorators = decorators
+        self.bases = bases
+        self.keywords = keywords
+        self.type_params = type_params
+
+
+_CLASS_LINE = re.compile(rb"class[ \t]+([A-Za-z_][A-Za-z0-9_]*)")
+_SIMPLE_CLASS_HEADER = re.compile(rb"class[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*(?:\(([ \t]*(?:[A-Za-z_][A-Za-z0-9_.]*[ \t]*"
+                                  rb"(?:,[ \t]*[A-Za-z_][A-Za-z0-9_.]*[ \t]*)*,?)?[ \t]*)\))?[ \t]*:")
+_STRING_ON_LINE = re.compile(rb"'(?:[^'\\\n]|\\.)*'|\"(?:[^\"\\\n]|\\.)*\"")
+_DEF_START = re.compile(rb"(?:def|async)[ \t]")
+
+
+def _has_code(line):
+    s = line.strip(b" \t\f\r")
+    return bool(s) and not s.startswith(b"#")
+
+
+def _code_depth(text, depth):
+    """Bracket depth after `text` (one physical line), starting from `depth`, or None when the
+    line has a string that does not end on it, a backslash continuation, or closes too much."""
+    code = _STRING_ON_LINE.sub(b"", text)
+    if b"'" in code or b'"' in code:
+        return None
+    code = code.split(b"#", 1)[0].rstrip()
+    if code.endswith(b"\\"):
+        return None
+    for ch in code:
+        if ch in b"([{":
+            depth += 1
+        elif ch in b")]}":
+            depth -= 1
+            if depth < 0:
+                return None
+    return depth
+
+
+def class_statements_to_parse(src, special_bases):
+    """Class statements that may have a decorator, a keyword, type parameters, a base that is not
+    a plain dotted name, or a base whose last name is in special_bases, found from the bytes
+    alone (~30x cheaper than parsing): a list of (line, class name or None, at column 0, why);
+    the name is given only when exactly one class line of the module has it. An empty list
+    means the module certainly has none.
+
+    Why this never misses one: a class statement's `class` keyword and each decorator's `@`
+    are the first token of a logical line, hence of a physical line (a compound statement cannot
+    follow `;`, and a backslash continuation would join them into the previous line). A class
+    line that starts with `class Name(dotted, ...):` carries its whole header. A decorator's
+    logical line ends where its brackets balance, once each physical line's complete strings and
+    comment are removed (a string or backslash continuing past a line stops the scan); the
+    decorated statement is the next line with code at the same indentation: another decorator,
+    a def (fine) or a class (reported). Anything else is reported with name None. A false report
+    (a string that looks like a class line or a decorator) only costs a parse.
+    """
+    lines = src.splitlines()  # \n, \r\n and \r: Python's newlines
+    out = []
+    names = {}
+    for i, line in enumerate(lines):
+        stripped = line.lstrip(b" \t\f")
+        if stripped.startswith(b"class") and not (stripped[5:6].isalnum() or stripped[5:6] == b"_"):
+            name = _CLASS_LINE.match(stripped)
+            if name:
+                names[name.group(1).decode()] = names.get(name.group(1).decode(), 0) + 1
+    for i, line in enumerate(lines):
+        stripped = line.lstrip(b" \t\f")
+        if stripped.startswith(b"class") and not (stripped[5:6].isalnum() or stripped[5:6] == b"_"):
+            m = _SIMPLE_CLASS_HEADER.match(stripped)
+            name = _CLASS_LINE.match(stripped)
+            name = name.group(1).decode() if name else None
+            top = len(stripped) == len(line)
+            if m is None:
+                out.append((i + 1, name, top, "class header of another shape"))
+                continue
+            for base in (m.group(1) or b"").split(b","):
+                base = base.strip()
+                if base and base.rsplit(b".", 1)[-1].decode() in special_bases:
+                    out.append((i + 1, name, top, f"base {base.decode()}"))
+                    break
+        elif stripped.startswith(b"@"):
+            depth, j = _code_depth(stripped, 0), i
+            while depth:  # a decorator spanning lines: follow it to its last line
+                j += 1
+                depth = _code_depth(lines[j], depth) if j < len(lines) else None
+            if depth is None:
+                out.append((i + 1, None, False, "decorator whose end was not found"))
+                continue
+            indent = line[: len(line) - len(stripped)]
+            j += 1
+            while j < len(lines) and not _has_code(lines[j]):
+                j += 1  # blank and comment-only lines may sit between a decorator and its statement
+            if j == len(lines):
+                out.append((i + 1, None, False, "decorator without a statement"))
+                continue
+            nxt = lines[j]
+            body = nxt.lstrip(b" \t\f")
+            if nxt[: len(nxt) - len(body)] != indent:
+                out.append((j + 1, None, False, "decorated statement at another indentation"))
+            elif body.startswith(b"class") and not (body[5:6].isalnum() or body[5:6] == b"_"):
+                name = _CLASS_LINE.match(body)
+                out.append((j + 1, name.group(1).decode() if name else None, not indent, "decorated class"))
+            elif not (body.startswith(b"@") or _DEF_START.match(body)):
+                out.append((j + 1, None, False, "decorated statement is not a def"))
+    # A name with several class statements in the module is reported without it: the maps
+    # describe only the class the name ends up bound to.
+    return [(line, name if names.get(name) == 1 else None, top, why) for line, name, top, why in out]
+
+
+def _absolute_module(module, is_package, level, name):
+    if not level:
+        return name
+    parts = module.split(".")
+    if not is_package:
+        parts = parts[:-1]
+    if level - 1:
+        if level - 1 > len(parts):
+            return None
+        parts = parts[: len(parts) - (level - 1)]
+    if not parts:
+        return None
+    return ".".join(parts + ([name] if name else []))
+
+
+def _module_bindings(tree, module, is_package):
+    """name -> every binding of that name anywhere in the module, as ("module", dotted) for
+    `import x.y [as z]`, ("from", dotted) for `from m import n [as z]`, or ("other",)."""
+    out = {}
+
+    def bind(name, what):
+        out.setdefault(name, []).append(what)
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for a in node.names:
+                if a.asname:
+                    bind(a.asname, ("module", a.name))
+                else:
+                    top = a.name.split(".")[0]
+                    bind(top, ("module", top))
+        elif isinstance(node, ast.ImportFrom):
+            base = _absolute_module(module, is_package, node.level, node.module)
+            for a in node.names:
+                if a.name == "*":
+                    bind("*", ("other",))
+                else:
+                    bind(a.asname or a.name, ("from", f"{base}.{a.name}") if base else ("other",))
+        elif isinstance(node, ast.Name) and not isinstance(node.ctx, ast.Load):
+            bind(node.id, ("other",))
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            bind(node.name, ("other",))
+        elif isinstance(node, ast.arg):
+            bind(node.arg, ("other",))
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            bind(node.name, ("other",))
+        elif isinstance(node, (getattr(ast, "MatchAs", ()), getattr(ast, "MatchStar", ()))) and node.name:
+            bind(node.name, ("other",))
+        elif isinstance(node, getattr(ast, "MatchMapping", ())) and node.rest:
+            bind(node.rest, ("other",))
+        elif type(node).__name__ in ("TypeVar", "ParamSpec", "TypeVarTuple", "TypeAlias"):
+            name = getattr(node, "name", None)
+            if isinstance(name, str):
+                bind(name, ("other",))
+    return out
+
+
+def _resolver(bindings):
+    import builtins
+
+    def resolve(dotted):
+        """The fully dotted name `dotted` (source text) refers to, or None when the module binds
+        its first name more than once, by anything but an import, or may bind it by `import *`."""
+        if dotted is None:
+            return None
+        head, _, rest = dotted.partition(".")
+        found = bindings.get(head)
+        if "*" in bindings:
+            return None
+        if found is None:
+            return f"builtins.{dotted}" if hasattr(builtins, head) else None
+        if len(found) != 1 or found[0][0] == "other":
+            return None
+        target = found[0][1]
+        return f"{target}.{rest}" if rest else target
+
+    return resolve
+
+
+def module_class_facts(src, module, is_package=False):
+    """ClassFacts for every class statement of a module's source (functions included), or None
+    when it does not parse."""
+    try:
+        tree = ast.parse(src)
+    except (SyntaxError, ValueError, RecursionError):
+        return None
+    resolve = _resolver(_module_bindings(tree, module, is_package))
+    out = []
+
+    def facts(node, qualname):
+        decorators = []
+        for d in node.decorator_list:
+            call = isinstance(d, ast.Call)
+            target = d.func if call else d
+            text = _dotted(target)
+            decorators.append((text or "?", resolve(text), call))
+        bases = tuple((_dotted(b), resolve(_dotted(b))) for b in node.bases)
+        return ClassFacts(qualname, node.lineno, tuple(decorators), bases, bool(node.keywords),
+                          bool(getattr(node, "type_params", None)))
+
+    def walk(body, prefix, local):
+        # A class statement only ever sits in a statement body: of the module, a class, a
+        # function, a compound statement, an except handler or a match case.
+        for node in body:
+            if isinstance(node, ast.ClassDef):
+                qual = None if local else (f"{prefix}.{node.name}" if prefix else node.name)
+                out.append(facts(node, qual))
+                walk(node.body, qual, local)
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                walk(node.body, None, True)
+            else:
+                for child in ast.iter_child_nodes(node):
+                    if isinstance(child, ast.stmt):
+                        walk([child], prefix, local)
+                    elif isinstance(child, (ast.excepthandler, getattr(ast, "match_case", ()))):
+                        walk(child.body, prefix, local)
+
+    try:
+        walk(tree.body, None, False)
+        if len(out) != sum(isinstance(n, ast.ClassDef) for n in ast.walk(tree)):
+            return None  # a class statement this walk did not reach: unknown
+    except RecursionError:
+        return None
+    return out
 
 
 def _guarded_literal_expr(a, b, hashable):
