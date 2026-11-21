@@ -15,6 +15,7 @@ import io
 import json
 import marshal
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -57,7 +58,7 @@ def entry(n, s=0.01, cpu=0.01, proc=0.1, **kw):
 
 
 def elig_file(tests, src, entries=None, **header):
-    h = {"python": PY, "implementation": sys.implementation.name, "machine": os.uname().machine,
+    h = {"python": PY, "implementation": sys.implementation.name, "machine": platform.machine(),
          "engines": {"unittest": {"python": PY}, "pytest": {"python": PY, "pytest": "9"}},
          "source_digest": m0.source_digest(src), "tests_identity": m0.tests_identity(tests),
          "runner_digest": m0.runner_digest(), "runs": RUNS, "seeds": [0, 1], "also_batch": True}
@@ -65,6 +66,16 @@ def elig_file(tests, src, entries=None, **header):
     if entries is None:
         entries = {t["id"]: entry(t["number"], t["seconds"]) for t in tests}
     return {"schema": mode0.SCHEMA, "header": h, "summary": {}, "tests": entries}
+
+
+def fake_site(path, version="9"):
+    """A site-packages dir holding only the metadata of pytest `version` (what the header of
+    elig_file records), which is all Mode 0 reads of it."""
+    dist = os.path.join(path, f"pytest-{version}.dist-info")
+    os.makedirs(dist, exist_ok=True)
+    with open(os.path.join(dist, "METADATA"), "w") as fh:
+        fh.write(f"Metadata-Version: 2.1\nName: pytest\nVersion: {version}\n")
+    return path
 
 
 def catalog(n, seconds=0.01):
@@ -205,7 +216,7 @@ class ImpactContractTest(unittest.TestCase):
 
 # ------------------------------------------------------------------------- eligibility
 
-class EligibilityTest(TmpDir):
+class EligibilityBase(TmpDir):
     def setUp(self):
         super().setUp()
         self.src = os.path.join(self.tmp, "src")
@@ -220,17 +231,19 @@ class EligibilityTest(TmpDir):
     def load(self, engine="unittest", python=None):
         return mode0.load_eligibility(self.path, self.tests, self.src, engine, python=python)
 
+    def refused(self, data=None, raw=None, **kw):
+        self.save(data, raw)
+        with self.assertRaises(mode0.Refused):
+            self.load(**kw)
+
+
+class EligibilityTest(EligibilityBase):
     def test_valid(self):
         self.save(elig_file(self.tests, self.src))
         got = self.load()
         self.assertEqual(sorted(got), sorted(t["id"] for t in self.tests))
         self.assertEqual(got[self.tests[0]["id"]], (0.01, 0.1))
         self.assertEqual(len(self.load("pytest")), 4)
-
-    def refused(self, data=None, raw=None, **kw):
-        self.save(data, raw)
-        with self.assertRaises(mode0.Refused):
-            self.load(**kw)
 
     def test_refusals(self):
         good = elig_file(self.tests, self.src)
@@ -450,8 +463,7 @@ class SessionBase(TmpDir):
         self.src = os.path.join(self.tmp, "src")
         write_tree(self.src, {"sqlglot/__init__.py": "", "sqlglot/a.py": "def f():\n    return 1\n",
                               "tests/__init__.py": "", "tests/test_x.py": ""})
-        self.site = os.path.join(self.tmp, "site")
-        os.makedirs(self.site)
+        self.site = fake_site(os.path.join(self.tmp, "site"))
         self.tests = catalog(6, seconds=0.05)
         self.ms = {t["number"]: round(t["seconds"] * 1000) for t in self.tests}
         self.elig = os.path.join(self.tmp, "mode0.json")
@@ -487,7 +499,8 @@ class SessionTest(SessionBase):
         self.assertEqual(list(spec["patched"]), ["sqlglot.a"])
         self.assertEqual(spec["patched"]["sqlglot.a"][0], os.path.join(os.path.realpath(self.src), "sqlglot/a.py"))
         self.assertEqual([t["cap"] for t in spec["tests"]], [2.0] * 3)
-        self.assertAlmostEqual(timeout, 10.0 + 6.0 + 2.0)
+        # min(caps 10 + 6 + 2, max(4 * estimate 0.18, floor 3), budget 30 + 2, wall) = floor
+        self.assertAlmostEqual(timeout, 3.0)
         self.assertAlmostEqual(s.spent, 0.2)
         self.assertTrue(any("mode0 admit" in line for line in self.logs))
 
@@ -643,7 +656,7 @@ class SessionTest(SessionBase):
         self.assertEqual(spec["patched"], {"sqlglot.a": [os.path.join(os.path.realpath(self.src), "sqlglot/a.py"),
                                                         base64.b64encode(A_NEW).decode()]})
         self.assertEqual(spec["tests"], [{"id": i, "cap": 2.0} for i in self.ids([0, 1, 2])])
-        self.assertAlmostEqual(timeout, 10.0 + 6.0 + 2.0)
+        self.assertAlmostEqual(timeout, 3.0)  # TIMEOUT_FLOOR (see TimeoutTest)
         # The estimate is the legacy one: 1.5 * (max(proc - cpu) + sum(cpu)).
         self.assertTrue(any("cpu~0.180" in line for line in self.logs), self.logs)
 
@@ -757,7 +770,8 @@ class ExactProblemTest(TmpDir):
         for exact, runs in (("1", 0), ("", 0), ("0", 1)):
             with self.subTest(exact=exact):
                 ex, logs = FakeExecute(), []
-                env = {"BR_MODE0_ELIG": elig, "BR_MODE0_SITE": self.tmp, "BR_MODE0_EXACT": exact}
+                env = {"BR_MODE0_ELIG": elig, "BR_MODE0_SITE": fake_site(os.path.join(self.tmp, "site")),
+                       "BR_MODE0_EXACT": exact}
                 s = mode0.Session(mode0.Config(env), tests, src, 0.0, 80.0, 140.0, logs.append,
                                   execute=ex, clock=lambda: 1.0)
                 s.verify("c", {0}, result(["sqlglot/a.py"], new=new), [offset], ms)
@@ -975,7 +989,7 @@ def fs_entries(tests, spawn=(), not_fs=()):
     return out
 
 
-class FsTest(SessionBase):
+class FsBase(SessionBase):
     def setUp(self):
         super().setUp()
         self.work = os.path.join(self.tmp, "ovwork")
@@ -1000,6 +1014,8 @@ class FsTest(SessionBase):
     def leftovers(self):
         return os.listdir(self.work)
 
+
+class FsTest(FsBase):
     def test_eligibility(self):
         e = mode0.load(self.elig, self.tests, self.src, "unittest", fs_cpus=2)
         self.assertIsNone(e.fs_why)
@@ -1279,8 +1295,7 @@ class EndToEndTest(TmpDir):
         self.elig = os.path.join(self.tmp, "mode0.json")
         with open(self.elig, "w") as fh:
             json.dump(elig_file(self.tests, self.src), fh)
-        self.site = os.path.join(self.tmp, "site")
-        os.makedirs(self.site)
+        self.site = fake_site(os.path.join(self.tmp, "site"))
 
     def env(self, **extra):
         env = {k: v for k, v in os.environ.items() if not k.startswith("BR_")}
@@ -1430,6 +1445,369 @@ class EndToEndFsTest(EndToEndTest):
         self.assertEqual(err.count("core: mode0 fs admit"), 2, err)
         self.assertEqual(os.listdir(self.tmpdir), [])
 
+    test_flag_off_never_executes = None
+
+
+# ------------------------------------------------- what git apply reads (review admission2)
+
+A_OLD_LINES = b"".join(b"line %d\n" % i for i in range(1, 41))
+
+
+def a_patch(body, header=b""):
+    return (b"diff --git a/sqlglot/a.py b/sqlglot/a.py\n" + header
+            + b"--- a/sqlglot/a.py\n+++ b/sqlglot/a.py\n" + body)
+
+
+EDIT_5 = b"@@ -4,3 +4,3 @@\n line 4\n-line 5\n+LINE 5\n line 6\n"
+
+
+class GitReadingTest(TmpDir):
+    """contract() refuses entries `git apply -p1` reads differently from patch.parse/apply,
+    whatever BR_MODE0_EXACT says."""
+
+    def setUp(self):
+        super().setUp()
+        write_tree(self.tmp, {"sqlglot/__init__.py": ""})
+        with open(os.path.join(self.tmp, "sqlglot", "a.py"), "wb") as fh:
+            fh.write(A_OLD_LINES)
+
+    def check(self, data, exact=True):
+        fps = parse(data)
+        res = result(["sqlglot/a.py"], new=A_OLD_LINES.replace(b"line 5\n", b"LINE 5\n"))
+        why = mode0.contract(fps, res, self.tmp)
+        if why is None and exact:
+            why = mode0.exact_problem(fps, res, self.tmp)
+        return why
+
+    def test_control_admitted(self):
+        self.assertIsNone(self.check(a_patch(EDIT_5)))
+        self.assertIsNone(self.check(a_patch(EDIT_5, b"index fed01b2..508980a 100644\n")))
+        self.assertIsNone(self.check(a_patch(EDIT_5, b"index fed01b2..508980a\n")))
+        self.assertIsNone(self.check(a_patch(EDIT_5, b"index fed01b2..508980a 100755\n")))
+
+    def test_new_position_disagrees(self):
+        """a01_newpos: `@@ -4,3 +40,3 @@` applies exactly at old line 4, but git looks for it
+        at line 40 first (and would edit another copy of the context if there was one)."""
+        for body in (b"@@ -4,3 +40,3 @@\n line 4\n-line 5\n+LINE 5\n line 6\n",
+                     b"@@ -4,3 +3,3 @@\n line 4\n-line 5\n+LINE 5\n line 6\n"):
+            with self.subTest(body=body):
+                for exact in (True, False):
+                    self.assertIn("new position", self.check(a_patch(body), exact=exact))
+        # A second hunk whose new start ignores the first hunk's added line.
+        two = (b"@@ -4,3 +4,4 @@\n line 4\n-line 5\n+LINE 5\n+extra\n line 6\n"
+               b"@@ -20,3 +20,3 @@\n line 20\n-line 21\n+LINE 21\n line 22\n")
+        self.assertIn("new position", self.check(a_patch(two)))
+        consistent = two.replace(b"+20,3", b"+21,3")
+        self.assertNotIn("new position", self.check(a_patch(consistent)) or "")
+
+    def test_odd_names(self):
+        for data in (a_patch(EDIT_5).replace(b"--- a/", b"--- x/"),
+                     a_patch(EDIT_5).replace(b"+++ b/sqlglot/a.py", b"+++ b/sqlglot/a.py "),
+                     a_patch(EDIT_5).replace(b"diff --git a/sqlglot/a.py b/", b"diff --git x/sqlglot/a.py y/")):
+            with self.subTest(data=data[:80]):
+                fps = parse(data)
+                self.assertTrue(any(f.odd for f in fps))
+                self.assertIsNotNone(self.check(data))
+        f = fp("sqlglot/a.py")
+        f.odd = "anything"
+        self.assertIn("anything", mode0.contract([f], result(["sqlglot/a.py"]), self.tmp))
+
+    def test_header_lines(self):
+        """a02b_modeexec / a03_modelink: a mode change with hunks; and every other header line
+        git acts on."""
+        refused = [b"old mode 100644\nnew mode 100755\n", b"old mode 100644\nnew mode 120000\n",
+                   b"new mode 100755\n", b"similarity index 90%\n", b"dissimilarity index 10%\n",
+                   b"index fed01b2..508980a 120000\n", b"index fed01b2..508980a 160000\n",
+                   b"index fed01b2..508980a 100644 junk\n", b"index fed01b2...508980a\n",
+                   b"index zz..yy\n", b"index fed01b2..508980a 100644\r\n"]
+        for header in refused:
+            with self.subTest(header=header):
+                why = self.check(a_patch(EDIT_5, header))
+                self.assertIsNotNone(why)
+        for line in mode0.HEADER_REFUSED:
+            with self.subTest(line=line):
+                self.assertIsNotNone(mode0.header_problem([line + b" x\n"]))
+        self.assertIsNone(mode0.header_problem([]))
+        self.assertIsNone(mode0.header_problem([b"index 0123abc..4567def 100644\n"]))
+
+    def test_session_refuses_whatever_exact_says(self):
+        src = os.path.join(self.tmp, "src")
+        write_tree(src, {"sqlglot/__init__.py": "", "tests/__init__.py": "", "tests/test_x.py": ""})
+        with open(os.path.join(src, "sqlglot", "a.py"), "wb") as fh:
+            fh.write(A_OLD_LINES)
+        tests = catalog(2)
+        elig = os.path.join(self.tmp, "e.json")
+        with open(elig, "w") as fh:
+            json.dump(elig_file(tests, src), fh)
+        new = A_OLD_LINES.replace(b"line 5\n", b"LINE 5\n")
+        site = fake_site(os.path.join(self.tmp, "site"))
+        for data, runs in ((a_patch(EDIT_5), 1),
+                           (a_patch(EDIT_5.replace(b"+4,3", b"+30,3")), 0),
+                           (a_patch(EDIT_5, b"old mode 100644\nnew mode 100755\n"), 0),
+                           (a_patch(EDIT_5, b"old mode 100644\nnew mode 120000\n"), 0)):
+            for exact in ("1", "0"):
+                with self.subTest(data=data, exact=exact):
+                    ex, logs = FakeExecute(), []
+                    env = {"BR_MODE0_ELIG": elig, "BR_MODE0_SITE": site, "BR_MODE0_EXACT": exact,
+                           "BR_MODE0_MIN_GAIN": "-100", "BR_MODE0_RATIO": "0"}
+                    s = mode0.Session(mode0.Config(env), tests, src, 0.0, 80.0, 140.0, logs.append,
+                                      execute=ex, clock=lambda: 1.0)
+                    got = s.verify("c", {0}, result(["sqlglot/a.py"], new=new), parse(data), {0: 10, 1: 10})
+                    self.assertEqual(len(ex.calls), runs, logs)
+                    self.assertEqual(got, set() if runs else {0})
+
+    SRC = os.environ.get("BR_SRC", "")
+
+    @unittest.skipUnless(os.path.isdir(os.path.join(os.environ.get("BR_SRC", "/nonexistent"), "sqlglot")),
+                         "set BR_SRC to the pinned sqlglot checkout")
+    def test_sample_a09_comment_file_is_overlaid(self):
+        """a09: a proven no-op is/== swap plus a comment-only edit of a module no test reads as
+        text. replica_ok stays true with no site; every changed file is in res.patched (the
+        overlay), so the overlay is the whole patched code."""
+        from selector.impact import commit_impact
+        from selector.maps import Maps
+
+        data = b"""diff --git a/sqlglot/dialects/dialect.py b/sqlglot/dialects/dialect.py
+index fed01b2..508980a 100644
+--- a/sqlglot/dialects/dialect.py
++++ b/sqlglot/dialects/dialect.py
+@@ -1277,7 +1277,7 @@ class Dialect(metaclass=_Dialect):
+
+         unsafe = (
+             str.islower
+-            if self.normalization_strategy is NormalizationStrategy.UPPERCASE
++            if self.normalization_strategy == NormalizationStrategy.UPPERCASE
+             else str.isupper
+         )
+         return any(unsafe(char) for char in text)
+diff --git a/sqlglot/dialects/duckdb.py b/sqlglot/dialects/duckdb.py
+--- a/sqlglot/dialects/duckdb.py
++++ b/sqlglot/dialects/duckdb.py
+@@ -1,6 +1,7 @@
+ from __future__ import annotations
+
+
++# a comment only
+ from sqlglot import exp, tokens
+
+ from sqlglot.dialects.dialect import (
+"""
+        fps = parse(data)
+        res = commit_impact(fps, self.SRC, Maps(os.path.join(ROOT, "maps", "maps.bin")))
+        self.assertTrue(res.replica_ok)
+        self.assertFalse(res.call_sites or res.import_files)
+        paths = {"sqlglot/dialects/dialect.py", "sqlglot/dialects/duckdb.py"}
+        self.assertEqual(set(res.patched), paths)
+        for f in fps:
+            with open(os.path.join(self.SRC, f.old_path), "rb") as fh:
+                self.assertEqual(res.patched[f.old_path], mode0.exact_apply(f, fh.read()))
+        self.assertIsNone(mode0.contract(fps, res, self.SRC, allow_no_site=True))
+        self.assertIsNone(mode0.exact_problem(fps, res, self.SRC))
+        # Without the comment-only file in res.patched the set check refuses.
+        del res.patched["sqlglot/dialects/duckdb.py"]
+        self.assertIsNotNone(mode0.contract(fps, res, self.SRC, allow_no_site=True))
+
+
+# ---------------------------------------------------------------- eligibility binding (4a-c)
+
+class BindingTest(EligibilityBase):
+    def test_machine_must_match(self):
+        good = elig_file(self.tests, self.src)
+        for value in (None, "", "vax", platform.machine().upper() + "x"):
+            with self.subTest(value=value):
+                self.refused(dict(good, header=dict(good["header"], machine=value)))
+        no_machine = dict(good, header={k: v for k, v in good["header"].items() if k != "machine"})
+        self.refused(no_machine)
+        self.save(good)
+        self.assertEqual(len(self.load()), 4)
+
+    def site_load(self, site, header=None):
+        good = elig_file(self.tests, self.src)
+        if header is not None:
+            good["header"] = dict(good["header"], **header)
+        self.save(good)
+        return mode0.load(self.path, self.tests, self.src, "unittest", site=site)
+
+    def test_pytest_version(self):
+        a = fake_site(os.path.join(self.tmp, "a"), "9")
+        self.assertEqual(mode0.site_pytest_version([a]), "9")
+        self.assertEqual(len(self.site_load([a]).memory), 4)
+        self.assertEqual(len(self.site_load(None).memory), 4)  # no site: not checked
+        b = fake_site(os.path.join(self.tmp, "b"), "8.4.1")
+        empty = os.path.join(self.tmp, "empty")
+        os.makedirs(empty)
+        broken = os.path.join(self.tmp, "broken")
+        os.makedirs(os.path.join(broken, "pytest-9.dist-info"))  # no METADATA
+        cases = {"other version": ([b], None), "none installed": ([empty], None),
+                 "two versions": ([a, b], None), "no metadata": ([broken], None),
+                 "not recorded": ([a], {"engines": {"unittest": {}, "pytest": {}}}),
+                 "recorded null": ([a], {"engines": {"unittest": {}, "pytest": {"pytest": None}}})}
+        for why, (site, header) in cases.items():
+            with self.subTest(why=why):
+                with self.assertRaises(mode0.Refused):
+                    self.site_load(site, header)
+        # The same version twice (e.g. purelib == platlib listed twice) is determined.
+        self.assertEqual(len(self.site_load([a, fake_site(os.path.join(self.tmp, "c"), "9")]).memory), 4)
+
+    def test_pytest_not_imported(self):
+        a = fake_site(os.path.join(self.tmp, "a"), "9")
+        with open(os.path.join(a, "pytest.py"), "w") as fh:
+            fh.write("raise SystemExit('imported')\n")
+        sys.path.insert(0, a)
+        self.addCleanup(sys.path.remove, a)
+        self.assertEqual(mode0.site_pytest_version([a]), "9")
+
+
+class LoadErrorTest(SessionBase):
+    def test_unexpected_error_turns_off_once(self):
+        ex = FakeExecute()
+        s = self.session(ex)
+        with mock.patch.object(mode0, "load", side_effect=KeyError("boom")) as load:
+            self.assertEqual(self.verify(s, {0}), {0})
+            self.assertEqual(self.verify(s, {1}), {1})
+        self.assertEqual(load.call_count, 1)
+        self.assertEqual(ex.calls, [])
+        self.assertIn("KeyError", s.off)
+        self.assertEqual(sum("mode0 off" in line for line in self.logs), 1)
+
+    def test_session_checks_pytest_of_its_site(self):
+        os.remove(os.path.join(self.site, "pytest-9.dist-info", "METADATA"))
+        fake_site(self.site, "10.0")
+        shutil.rmtree(os.path.join(self.site, "pytest-9.dist-info"))
+        ex = FakeExecute()
+        s = self.session(ex)
+        self.assertEqual(self.verify(s, {0}), {0})
+        self.assertEqual(ex.calls, [])
+        self.assertIn("pytest 9 certified, 10.0 installed", s.off)
+
+
+# ------------------------------------------------------------------ child timeout economics (3)
+
+class TimeoutTest(SessionBase):
+    def timeout(self, selected=(0, 1, 2), **over):
+        ex = FakeExecute()
+        s = self.session(ex, **over)
+        self.verify(s, set(selected))
+        self.assertEqual(len(ex.calls), 1, self.logs)
+        return ex.calls[0][1]
+
+    def test_formula(self):
+        est = 1.5 * (0.09 + 0.03)  # legacy estimate of three tests
+        self.assertAlmostEqual(self.timeout(), 3.0)  # max(4 * 0.18, 3)
+        self.assertAlmostEqual(self.timeout(timeout_k=1, timeout_floor=0.1), est)
+        self.assertAlmostEqual(self.timeout(timeout_k=50, timeout_floor=0.1), 50 * est)
+        # Never above the per-test caps (STARTUP_CAP 10 + 3 * 2 + MARGIN 2).
+        self.assertAlmostEqual(self.timeout(timeout_k=1000), 18.0)
+        # Cut to the CPU budget left + MARGIN.
+        self.assertAlmostEqual(self.timeout(timeout_k=1000, cpu_budget=2.0), 4.0)
+        # Cut to the wall left.
+        self.assertAlmostEqual(self.timeout(timeout_k=1000, started=self.now - 75.0), 5.0)
+        for var, value in (("BR_MODE0_TIMEOUT_K", "0.5"), ("BR_MODE0_TIMEOUT_FLOOR", "0"),
+                           ("BR_MODE0_TIMEOUT_K", "nan")):
+            with self.subTest(var=var, value=value):
+                with self.assertRaises(ValueError):
+                    mode0.Config({var: value})
+        cfg = mode0.Config({})
+        self.assertEqual((cfg.timeout_k, cfg.timeout_floor), (4.0, 3.0))
+
+    def test_budget_left_follows_spent(self):
+        ex = FakeExecute(cpu=0.6)
+        s = self.session(ex, timeout_k=1000, cpu_budget=2.0)
+        self.verify(s, {0})
+        self.verify(s, {1})
+        self.assertAlmostEqual(ex.calls[0][1], 4.0)
+        self.assertAlmostEqual(ex.calls[1][1], 2.0 - 0.6 + 2.0)
+
+    def test_per_seed_estimate(self):
+        runs = [{"name": "iso"}, {"name": "seed0", "hash_seed": 0}, {"name": "seed1", "hash_seed": 1}]
+        with open(self.elig, "w") as fh:
+            json.dump(elig_file(self.tests, self.src, runs=runs), fh)
+        ex = FakeExecute(outcomes={self.tests[0]["id"]: {0: "failed"}})
+        env = {"BR_MODE0_ELIG": self.elig, "BR_MODE0_SITE": self.site, "BR_MODE0_SEEDS": "0,1",
+               "BR_MODE0_TIMEOUT_K": "1", "BR_MODE0_TIMEOUT_FLOOR": "0.1"}
+        s = mode0.Session(mode0.Config(env), self.tests, self.src, self.now, 80.0, 140.0, self.logs.append,
+                          execute=ex, clock=lambda: self.now)
+        self.verify(s, {0, 1, 2})
+        self.assertEqual(len(ex.calls), 2)
+        self.assertAlmostEqual(ex.calls[0][1], 1.5 * (0.09 + 0.03))  # one run of the three
+        self.assertAlmostEqual(ex.calls[1][1], 1.5 * (0.09 + 0.02))  # the two survivors
+
+    def test_timeout_keeps_tests_that_passed_before_it(self):
+        ids = self.ids([0, 1, 2])
+        for rc in (-9, 0, None):
+            with self.subTest(rc=rc):
+                ret = {"outcomes": {i: "passed" for i in ids}, "returncode": rc, "cpu": 0.5, "wall": 3.0,
+                       "timed_out": True, "done": {"done": True, "complete": True, "n": 3},
+                       "lines": {i: {"id": i, "outcome": "passed", "flags": []} for i in ids}}
+                s = self.session(FakeExecute(ret=ret))
+                self.assertEqual(self.verify(s, {0, 1, 2}), {0, 1, 2})
+                self.assertAlmostEqual(s.spent, 0.5)  # memory mode: the measured CPU
+        self.assertEqual(mode0._passed({"returncode": 0, "timed_out": None, "outcomes": {}}, ids), set())
+
+    def test_parse_results_of_a_killed_child(self):
+        """execute() passes -9 for a child it killed: no test is "passed" whatever was written."""
+        ids = self.ids([0, 1])
+        path = os.path.join(self.tmp, "r.out")
+        with open(path, "w") as fh:
+            fh.write(json.dumps({"start": True, "schema": m0.SCHEMA}) + "\n")
+            for i in ids:
+                fh.write(json.dumps({"id": i, "outcome": "passed", "cpu": 0.0, "wall": 0.0, "flags": []}) + "\n")
+            fh.write(json.dumps({"done": True, "complete": True, "n": 2}) + "\n")
+        got = m0.parse_results(path, ids, -9)
+        self.assertNotIn("passed", got.values())
+
+
+class FsChargeTest(FsBase):
+    def charged(self, **kw):
+        ex = FakeExecute(cpu=0.5, **kw)
+        s = self.fs_session(ex)
+        got = self.verify(s, {0, 1, 2})
+        self.assertEqual(ex.kwargs, [{"cpu_count": 2}])
+        return got, s.spent, ex.calls[0][1]
+
+    def test_killed_fs_run_charges_workers(self):
+        got, spent, _ = self.charged(timed_out=True, rc=-9)
+        self.assertEqual(got, {0, 1, 2})
+        self.assertAlmostEqual(spent, 0.5 + 2 * 0.3, delta=0.05)  # measured + cpu_count * wall
+        got, spent, _ = self.charged(rc=-14)  # the runner's own alarm: workers orphaned too
+        self.assertAlmostEqual(spent, 0.5 + 2 * 0.3, delta=0.05)
+        got, spent, _ = self.charged()
+        self.assertEqual(got, set())
+        self.assertAlmostEqual(spent, 0.5, delta=0.05)
+
+    def test_no_wall_charges_timeout(self):
+        ret = {"outcomes": {}, "returncode": -9, "cpu": 0.5, "timed_out": True, "lines": {}}
+        got, spent, timeout = self.charged(ret=ret)
+        self.assertAlmostEqual(spent, 0.5 + 2 * timeout, delta=0.05)
+
+
+class EndToEndTimeoutTest(EndToEndTest):
+    """The real runner killed at the (short) CPU-tied timeout: every test of the run is kept,
+    also test_positive, which would have passed."""
+
+    def setUp(self):
+        super().setUp()
+        with open(os.path.join(self.src, "tests", "test_core.py")) as fh:
+            text = fh.read()
+        text = text.replace("import unittest\n", "import time\nimport unittest\n", 1)
+        text = text.replace("    def test_positive(self):\n",
+                            "    def test_positive(self):\n        time.sleep(1.0)\n", 1)
+        with open(os.path.join(self.src, "tests", "test_core.py"), "w") as fh:
+            fh.write(text)
+        with open(self.elig, "w") as fh:
+            json.dump(elig_file(self.tests, self.src), fh)
+
+    def test_killed_run_keeps_everything(self):
+        out, err = self.run_selector(BR_MODE0="1", BR_MODE0_TIMEOUT_K="1", BR_MODE0_TIMEOUT_FLOOR="0.3")
+        self.assertEqual(out, {"core": [0, 1], "docs": []}, err)
+        self.assertIn("timeout=True limit=0.3s", err)
+
+    def test_passing_dropped_failing_kept(self):
+        out, err = self.run_selector(BR_MODE0="1")  # floor 3 s covers the 1 s sleep
+        self.assertEqual(out, {"core": [1], "docs": []}, err)
+        self.assertIn("timeout=False limit=3.0s", err)
+
+    test_flag_off_is_static_selection = test_refused_file_is_static_selection = None
     test_flag_off_never_executes = None
 
 
