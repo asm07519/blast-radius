@@ -61,13 +61,26 @@ def module_name(path):
     return name[: -len(".__init__")] if name.endswith(".__init__") else name
 
 
+def overlay_spec(patched_files, src_root):
+    """The in-memory overlay of replica_runner.install_overlay: {module: [path, base64 source]}."""
+    return {module_name(p): [os.path.join(src_root, p), base64.b64encode(src).decode()]
+            for p, src in patched_files.items()}
+
+
+def mode0_verify(session, cid, selected, res, fps, ms, overlay="memory"):
+    """Mode 0 (selector/mode0.py): `selected` minus the candidates observed to pass on the
+    patched code; unchanged when Mode 0 is off (session None) or anything goes wrong."""
+    if session is None:
+        return selected
+    return session.verify(cid, selected, res, fps, ms, overlay=overlay)
+
+
 def run(test_id, values, patched_files, src_root, timeout=8.0):
     """True if the restricted test passes on the patched code."""
     cfg = REPLICAS[test_id]
     spec = {
         "src": src_root,
-        "patched": {module_name(p): [os.path.join(src_root, p), base64.b64encode(src).decode()]
-                    for p, src in patched_files.items()},
+        "patched": overlay_spec(patched_files, src_root),
         "module": cfg["module"],
         "cls": cfg["cls"],
         "method": cfg["method"],
@@ -105,8 +118,7 @@ def run_exec(infos, patched_files, src_root, timeout=12.0):
     spec = {
         "kind": "exec_fp",
         "src": src_root,
-        "patched": {module_name(p): [os.path.join(src_root, p), base64.b64encode(src).decode()]
-                    for p, src in patched_files.items()},
+        "patched": overlay_spec(patched_files, src_root),
         "suites": [[info["suite"], info["fingerprint"]] for info in infos],
     }
     fd, path = tempfile.mkstemp(prefix="br-replica-", suffix=".json")
