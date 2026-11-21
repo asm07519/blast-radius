@@ -10,7 +10,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import mode0, replica, schedule
+from . import import_probe, mode0, replica, schedule
 from .impact import Everything, commit_impact, refine_class_literal
 from .maps import Maps
 from .patch import parse
@@ -116,6 +116,12 @@ def main(argv=None):
     except Exception as error:
         log(f"maps unavailable ({error!r}); selecting every test")
         maps = None
+    probe_modules = None
+    if maps is not None:
+        try:
+            probe_modules = import_probe.modules_from_maps(maps)
+        except Exception as error:
+            log(f"import probe off: {error!r}")
     session = None  # Mode 0 (BR_MODE0=1, default off): see selector/mode0.py
     if maps is not None:
         try:
@@ -138,7 +144,13 @@ def main(argv=None):
             if not fps:
                 raise Everything("unparseable patch")
             refiner = None if os.environ.get("BR_NO_REFINE") == "1" else refine_class_literal
-            res = commit_impact(fps, src_root, maps, import_refiner=refiner)
+            # BR_LITERAL_PROBE=1: class-literal narrowing is used only after the patched code
+            # imports cleanly in a child (selector/import_probe.py). No probe means no narrowing.
+            probe = None
+            if probe_modules is not None and time.monotonic() - started < replica_budget:
+                def probe(patched):
+                    return import_probe.run(patched, src_root, probe_modules)
+            res = commit_impact(fps, src_root, maps, import_refiner=refiner, import_probe=probe)
             selected = set(bits_to_numbers(res.bits, translate))
             if res.nontrivial:
                 selected.update(unmapped)
