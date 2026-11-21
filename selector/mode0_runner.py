@@ -10,7 +10,8 @@ Parent side (stdlib only, cheap to import: no unittest, no pytest):
 Child side: replica_runner.py dispatches a spec with "kind": "mode0" to run().
 
 Spec (JSON file, the only argument of `python -I -S -B selector/replica_runner.py <spec.json>`,
-see launch_argv; -B keeps multiprocessing children from writing .pyc files into src):
+see launch_argv; -B keeps multiprocessing children from writing .pyc files into src;
+launch_argv/execute(cpu_count=N) add `-X cpu_count=N`, which caps ProcessPoolExecutor()):
     {"kind": "mode0",
      "src": "<abs sqlglot root>",
      "patched": {module: [abs path, base64 source]},   # may be empty (eligibility runs)
