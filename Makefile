@@ -3,7 +3,10 @@ TOOLS ?= blast-radius-tools
 SAMPLE := $(CURDIR)/sample
 OUTPUT := $(CURDIR)/output.jsonl
 WORK := $(CURDIR)/work
-JOBS ?= $(shell nproc)
+# CPUs of the Docker VM (on macOS that is not the host's count, and `nproc` may not exist).
+# `docker info` prints 0 (and fails) while the daemon is down.
+JOBS ?= $(shell n=$$(docker info --format '{{.NCPU}}' 2>/dev/null); [ "$$n" -gt 0 ] 2>/dev/null && echo $$n \
+	|| nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)
 MUTANTS ?= 150
 SEED ?= 1
 
@@ -47,9 +50,10 @@ maps: tools
 	 && python tools/subtest_cov.py --repo /src/sqlglot \
 		--test tests/test_generator.py::TestGenerator::test_generator_memory --out /work/subtests_genmem.json \
 	 && python tools/exec_phases.py --repo /src/sqlglot --out /work/exec_phases.json \
-	 && python tools/compact_maps.py --tests maps/tests.json --raw /work/maps/raw --out maps/maps.bin \
+	 && python tools/compact_maps.py --tests maps/tests.json --raw /work/maps/raw --out maps/maps.bin.new \
 		--static /work/static.json --classes /work/classes.json --typeprof /work/typeprof.json \
-		--subtests /work/subtests_genmem.json --exec-phases /work/exec_phases.json"
+		--subtests /work/subtests_genmem.json --exec-phases /work/exec_phases.json \
+	 && mv maps/maps.bin.new maps/maps.bin"
 
 # Label the sample with our own runner (must reproduce sample/answers.json).
 truth-sample: tools
