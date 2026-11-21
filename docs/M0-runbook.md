@@ -148,5 +148,10 @@ Write the measured r, F and gate back into PRD §8 in place of the estimates.
 * Resume: `build_maps.py` skips every test with a raw file, including failed ones.
 * `JOBS` defaults to the VM's CPU count (18 here): too many for 8 GB. Pass `JOBS=6`.
 * `make sample-cpu` depends on `build`: editing anything under `tools/` reruns the repair step.
+* Docker Desktop's file sharing on macOS left conflict copies when a container replaced a file
+  the host had just deleted or renamed: `maps/maps 2.bin` (the old maps) and
+  `work/maps/raw/1490.s1 2.json` (a killed run, which compact_maps.py would read as a record of
+  test 1490 and mark it untrusted). After `make maps`, check `git status` and
+  `ls work/maps/raw | grep -v '^[0-9]*\.s[0-9]*\.json$'`; delete such files.
 * The labeller and the type profile run the suite in `JOBS` contiguous chunks: their results
   can depend on `JOBS` (state carried between tests inside a chunk).
