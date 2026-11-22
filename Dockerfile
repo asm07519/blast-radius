@@ -29,6 +29,8 @@ RUN python /app/tools/finish_maps.py --maps /app/maps/maps.bin --tests /app/maps
 
 COPY selector /app/selector
 COPY run.py /app/run.py
+# Import-state baseline for BR_CELLS (built with the image's exact Python 3.13).
+RUN python -I -S /app/tools/build_state.py --repo /app/src --out /app/maps/state.bin
 # Bytecode for the pinned sources makes the subtest replicas import sqlglot quickly.
 RUN python -m compileall -q /app/selector /app/run.py /app/src/sqlglot /app/src/tests \
  && chmod -R a+rX /app

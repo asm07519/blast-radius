@@ -211,6 +211,14 @@ def _write():
         "listed": sorted(_listed),
         "extra": _extra,
     }
+    if os.environ.get("BR_CELLS") == "1":
+        try:
+            import br_cells
+
+            data["cells"] = br_cells.dump()
+        except Exception as error:
+            data["cells"] = {"alarms": [f"dump failed: {error!r}"], "proxies": [], "unproxied": [],
+                             "collisions": [], "dyn": {"test": [], "import": []}}
     tmp = os.path.join(_OUT, f".{os.getpid()}.tmp")
     with open(tmp, "w") as fh:
         json.dump(data, fh)
@@ -238,6 +246,10 @@ def start():
     sys.monitoring.use_tool_id(_IMPORT_TOOL, "blast-radius-imports")
     sys.monitoring.register_callback(_IMPORT_TOOL, sys.monitoring.events.LINE, _on_import_line)
     _patch_imports()
+    if os.environ.get("BR_CELLS") == "1":
+        import br_cells
+
+        br_cells.install()
     sys.addaudithook(_audit)
     atexit.register(_write)
 

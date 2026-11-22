@@ -92,6 +92,18 @@ manifest: tools
 	$(MAPS_RUN) python tools/validate_evidence.py --maps maps/maps.bin --tests maps/tests.json \
 		--manifest maps/manifest.json --repo /src/sqlglot --root /app --allow-untrusted --write
 
+# Build sidecar maps/cells.bin (per-key table readers + traced dynamic reads) in the labelling
+# image without touching maps/maps.bin. Use JOBS<=6 on an 8 GB Docker VM.
+CELLS_WORK ?= /work/cells
+cells: tools
+	mkdir -p $(WORK)
+	$(MAPS_RUN) sh -ec 'W=$(CELLS_WORK); \
+	python tools/table_sites.py --repo /src/sqlglot --out $$W/table_sites.json; \
+	python tools/build_cells.py --repo /src/sqlglot --tests maps/tests.json --work $$W -j $(JOBS) --seed 0 --seed 1; \
+	python tools/compact_cells.py --tests maps/tests.json --maps maps/maps.bin --raw $$W/raw \
+		--table-sites $$W/table_sites.json --out maps/cells.bin.new; \
+	mv maps/cells.bin.new maps/cells.bin'
+
 # Host-side, no Docker: recompute everything in maps/manifest.json (exit 1 on any mismatch
 # or untrusted test). SRC, the pinned sqlglot tree, is optional: without it the tree
 # digest is not checked.

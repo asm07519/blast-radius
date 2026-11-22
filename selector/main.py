@@ -10,7 +10,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import import_probe, mode0, replica, schedule
+from . import import_probe, mode0, replica, schedule, state_probe
 from .impact import Everything, commit_impact, refine_class_literal
 from .maps import Maps
 from .patch import parse
@@ -117,11 +117,19 @@ def main(argv=None):
         log(f"maps unavailable ({error!r}); selecting every test")
         maps = None
     probe_modules = None
+    state_baseline = None
     if maps is not None:
         try:
             probe_modules = import_probe.modules_from_maps(maps)
         except Exception as error:
             log(f"import probe off: {error!r}")
+        if os.environ.get("BR_CELLS") == "1":
+            base_path = os.environ.get("BR_STATE_BASELINE", str(APP / "maps" / "state.bin"))
+            if os.path.isfile(base_path):
+                try:
+                    state_baseline = state_probe.load_baseline(base_path)
+                except Exception as error:
+                    log(f"state baseline off: {error!r}")
     session = None  # Mode 0 (BR_MODE0=1, default off): see selector/mode0.py
     if maps is not None:
         try:
@@ -147,10 +155,14 @@ def main(argv=None):
             # BR_LITERAL_PROBE=1: class-literal narrowing is used only after the patched code
             # imports cleanly in a child (selector/import_probe.py). No probe means no narrowing.
             probe = None
+            sprobe = None
             if probe_modules is not None and time.monotonic() - started < replica_budget:
                 def probe(patched):
                     return import_probe.run(patched, src_root, probe_modules)
-            res = commit_impact(fps, src_root, maps, import_refiner=refiner, import_probe=probe)
+                if state_baseline is not None:
+                    def sprobe(patched):
+                        return state_probe.run(patched, src_root, probe_modules, None, baseline=state_baseline)
+            res = commit_impact(fps, src_root, maps, import_refiner=refiner, import_probe=probe, state_probe=sprobe)
             selected = set(bits_to_numbers(res.bits, translate))
             if res.nontrivial:
                 selected.update(unmapped)

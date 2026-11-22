@@ -1,11 +1,12 @@
 """Loads the dependency maps and answers "which tests depend on X" as bitsets."""
 
 import marshal
+import os
 import zlib
 
 
 class Maps:
-    def __init__(self, path):
+    def __init__(self, path, cells_path=None):
         with open(path, "rb") as fh:
             data = marshal.loads(zlib.decompress(fh.read()))
         self.ids = data["ids"]
@@ -40,6 +41,74 @@ class Maps:
                 "windows": [(value, {f: frozenset(v) for f, v in files.items()}) for value, files in info["windows"]],
             }
         self.typeprof_incomplete = data.get("typeprof_incomplete", None)
+        self._load_cells(path, cells_path)
+
+    def _load_cells(self, maps_path, cells_path):
+        self.has_cells = False
+        self.cells_untrusted = 0
+        self._cells_sets = ()
+        self._cells_tracked = frozenset()
+        self._cells_keys = {}  # cell -> {key_fp: set_idx}
+        self._cells_any_key = {}  # cell -> set_idx
+        self._cells_whole = {}  # name -> set_idx
+        self._cells_dyn = {}  # (family_or_empty, name) -> set_idx
+        self._cells_dyn_star = {}  # family_or_empty -> set_idx
+        if cells_path is None:
+            cells_path = os.path.join(os.path.dirname(os.path.abspath(str(maps_path))), "cells.bin")
+        if not os.path.isfile(cells_path):
+            return
+        with open(cells_path, "rb") as fh:
+            cdata = marshal.loads(zlib.decompress(fh.read()))
+        if cdata.get("ids") != self.ids:
+            return
+        self._cells_sets = cdata["sets"]
+        self._cells_tracked = frozenset(cdata.get("tracked", ()))
+        self._cells_keys = cdata.get("keys", {})
+        self._cells_any_key = cdata.get("any_key", {})
+        self._cells_whole = cdata.get("whole", {})
+        self._cells_dyn = cdata.get("dyn", {})
+        self._cells_dyn_star = cdata.get("dyn_star", {})
+        self.cells_untrusted = cdata.get("untrusted", 0)
+        self.has_cells = True
+
+    def cell_tracked(self, cell):
+        return cell in self._cells_tracked
+
+    def key_readers(self, cell, key_fp):
+        per = self._cells_keys.get(cell)
+        if not per:
+            return 0
+        s = per.get(key_fp)
+        return self._cells_sets[s] if s is not None else 0
+
+    def any_key_readers(self, cell):
+        s = self._cells_any_key.get(cell)
+        return self._cells_sets[s] if s is not None else 0
+
+    def whole_readers(self, name):
+        s = self._cells_whole.get(name)
+        return self._cells_sets[s] if s is not None else 0
+
+    def dyn_name_readers(self, name, family_key=None):
+        if not self.has_cells:
+            return self.dynamic_readers(name, family_key=family_key)
+        sets = self._cells_sets
+        bits = 0
+        # Traced dynamic reads: exact name or wildcard "*" (vars/dir/getmembers), per family or global.
+        keys = [""]
+        if family_key is not None:
+            keys.append(family_key)
+            # Subclasses/superclasses sharing an MRO with family_key
+            kmro = self.class_info.get(family_key, (False, ()))[1]
+            keys.extend(kmro)
+        for fk in keys:
+            s = self._cells_dyn.get((fk, name))
+            if s is not None:
+                bits |= sets[s]
+            s = self._cells_dyn_star.get(fk)
+            if s is not None:
+                bits |= sets[s]
+        return bits
 
     def _lines(self, table, path, lines):
         k = self.file_index.get(path)

@@ -13,7 +13,7 @@ import posixpath
 import re
 import sys
 
-from . import guards, pyast, tpc_fixture
+from . import cells_rule, guards, pyast, tpc_fixture
 from .patch import PatchError, apply, misplaced_hunk
 
 try:
@@ -118,6 +118,8 @@ class Result:
         self.probe_calls = 0
         # BR_LITERAL_PROBE: why literal sites were refused narrowing (impact.probe_exclusion).
         self.exclusions = []
+        # BR_CELLS: sqlglot/ import sites waiting for state_probe resolution.
+        self.cell_sites = []
 
     def add(self, bits, note=None):
         self.bits |= bits
@@ -181,7 +183,7 @@ def commit_files(file_patches):
         _FILE_PATCHES.reset(token)
 
 
-def commit_impact(file_patches, src_root, maps, import_refiner=None, import_probe=None):
+def commit_impact(file_patches, src_root, maps, import_refiner=None, import_probe=None, state_probe=None):
     """Tests a patch can affect, as a Result.
 
     import_probe(patched: dict[path, bytes]) -> bool is used only with BR_LITERAL_PROBE=1: it
@@ -210,10 +212,10 @@ def commit_impact(file_patches, src_root, maps, import_refiner=None, import_prob
             if found:
                 raise Everything(f"{fp.path}: adds a process-killing call ({found.strip()})")
     with source_root(src_root), commit_files(file_patches):
-        return _commit_impact(file_patches, src_root, maps, import_refiner, import_probe)
+        return _commit_impact(file_patches, src_root, maps, import_refiner, import_probe, state_probe)
 
 
-def _commit_impact(file_patches, src_root, maps, import_refiner, import_probe):
+def _commit_impact(file_patches, src_root, maps, import_refiner, import_probe, state_probe=None):
     res = Result()
     seen = set()
     for fp in file_patches:
@@ -244,6 +246,8 @@ def _commit_impact(file_patches, src_root, maps, import_refiner, import_probe):
     verdict = []
     if res.conditional:
         verdict.append(_resolve_conditional(res, import_probe))
+    if res.cell_sites:
+        verdict.append(cells_rule.resolve_cells(res, maps, src_root, state_probe))
     # main.py logs only the first notes of a commit: the literal verdict and exclusions go first.
     distinct = list(dict.fromkeys(res.exclusions))
     verdict += distinct[:3]
@@ -473,6 +477,9 @@ def _modified(fp, path, src_root, maps, res, import_refiner):
             if probe_on and site.excluded:
                 res.exclusions.append(f"literal narrowing excluded: {path}: {site.excluded}")
             if bits is None:
+                if pyast.cells() and path.startswith("sqlglot/"):
+                    res.cell_sites.append((path, site, maps.imported(path)))
+                    continue
                 bits = maps.imported(path)
             elif probe_on:
                 # A narrowing assumes the patched code imports cleanly; checked once per commit.
