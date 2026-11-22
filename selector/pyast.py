@@ -26,7 +26,7 @@ _COOKIE = re.compile(rb"^[ \t\f]*#.*?coding[:=][ \t]*([-\w.]+)")
 
 class Site:
     __slots__ = ("kind", "lines", "names", "why", "class_path", "literal", "proof", "annotated", "class_heads",
-                 "value_only", "excluded")
+                 "value_only", "excluded", "state_ok", "state_why", "state_callees")
 
     def __init__(self, kind, lines=(), names=(), why="", class_path=None, literal=False, proof=None,
                  annotated=False, class_heads=None, value_only=False):
@@ -51,6 +51,12 @@ class Site:
         self.value_only = value_only
         # Why impact.probe_exclusion refused to narrow this site (for the commit's notes), or None.
         self.excluded = None
+        # BR_CELLS (import sites only, set by Analysis when the flag is on): the statement may be
+        # judged by observing import-time state (state_eligibility), why not, and the dotted
+        # sqlglot callees its changed parts call (impact checks they are defined and unchanged).
+        self.state_ok = False
+        self.state_why = "not judged"
+        self.state_callees = ()
 
     def __repr__(self):
         ls = sorted(self.lines)
@@ -147,13 +153,25 @@ _BIG = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.If, ast.For, as
 
 
 class Analysis:
-    def __init__(self, old_src, new_src):
+    def __init__(self, old_src, new_src, module=None, is_package=False):
         self.old_src = old_src
         self.new_src = new_src
         self.old_lines = old_src.splitlines(keepends=True)
         self.new_lines = new_src.splitlines(keepends=True)
         self.sites = []
         self.future_annotations = False
+        # BR_CELLS: import sites waiting for state_eligibility, and how deep the current body
+        # sits in module- or class-level compound statements (if/try/for/with/match).
+        self.module = module
+        self.is_package = is_package
+        self.state = cells()
+        self.new_future_annotations = False
+        self._pending = []
+        self._nested = 0
+
+    def _pend(self, site, how, o, n, scope):
+        if self.state and site.kind == "import":
+            self._pending.append((site, how, o, n, scope, self._nested))
 
     # -- source text of a statement, decorators included
     def _text(self, lines, node):
@@ -192,6 +210,19 @@ class Analysis:
             self.diff_body(old_tree.body, new_tree.body, ("module", None), None)
         except RecursionError:
             self.sites.append(Site("syntax", why="too deep"))
+        if self.state:
+            from . import cells_static
+
+            self.new_future_annotations = cells_static.has_future_annotations(new_tree)
+            try:
+                cells_static.judge(self, old_tree, new_tree)
+            except RecursionError:
+                for site, *_ in self._pending:
+                    site.state_ok, site.state_why = False, "too deep to judge"
+            except Exception as error:  # noqa: BLE001 - a judge that fails proves nothing
+                for site, *_ in self._pending:
+                    site.state_ok, site.state_why = False, f"judge failed ({error!r})"
+            self._pending = []
         return self.sites
 
     @staticmethod
@@ -262,6 +293,7 @@ class Analysis:
             self.sites.append(Site("call", lines, why=why, proof=proof))
         else:
             self.sites.append(Site("import", lines, names, why=why))
+            self._pend(self.sites[-1], "header", None, None, scope)
 
     def removed(self, o, scope, olds, index, header, annotated=False):
         if _is_const_expr(o):
@@ -277,6 +309,7 @@ class Analysis:
                                    class_path=_class_path(scope), literal=_literal_stmt(o),
                                    annotated=annotated or isinstance(o, ast.AnnAssign),
                                    class_heads=_class_heads(scope)))
+            self._pend(self.sites[-1], "removed", o, None, scope)
             if isinstance(o, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 self.sites.append(Site("call", span(o), why="def removed"))
 
@@ -295,6 +328,7 @@ class Analysis:
                                    class_path=_class_path(scope), literal=_literal_stmt(n),
                                    annotated=annotated or isinstance(n, ast.AnnAssign),
                                    class_heads=_class_heads(scope)))
+            self._pend(self.sites[-1], "inserted", None, n, scope)
 
     # -- statements of the same type
     def diff_stmt(self, o, n, scope, olds, index, header):
@@ -324,21 +358,31 @@ class Analysis:
                     proof = cmp_swap(getattr(o, changed_hdr[0]), getattr(n, changed_hdr[0]))
                 self._site_for_scope(scope, entry_lines(o), bound_names(o), f"{type(o).__name__} header",
                                      proof=proof)
-            for f in body_fields:
-                ob, nb = getattr(o, f), getattr(n, f)
-                block_hdr = entry_lines(o)
-                if f == "orelse" and ob:
-                    block_hdr = block_hdr | set(range(ob[0].lineno, ob[0].lineno + 1))
-                if f == "handlers":
-                    self._diff_handlers(ob, nb, scope, o)
-                elif f == "cases":
-                    self._diff_cases(ob, nb, scope, o)
-                elif not ob or not nb:
-                    if dump_list(ob) != dump_list(nb):
-                        self._site_for_scope(scope, entry_lines(o), bound_names(o), f"{f} added/removed")
-                else:
-                    self.diff_body(ob, nb, scope, block_hdr)
+            self._nested += 1
+            try:
+                self._diff_compound_bodies(o, n, scope, body_fields)
+            finally:
+                self._nested -= 1
             return
+        self._diff_simple(o, n, scope, olds, index, header)
+
+    def _diff_compound_bodies(self, o, n, scope, body_fields):
+        for f in body_fields:
+            ob, nb = getattr(o, f), getattr(n, f)
+            block_hdr = entry_lines(o)
+            if f == "orelse" and ob:
+                block_hdr = block_hdr | set(range(ob[0].lineno, ob[0].lineno + 1))
+            if f == "handlers":
+                self._diff_handlers(ob, nb, scope, o)
+            elif f == "cases":
+                self._diff_cases(ob, nb, scope, o)
+            elif not ob or not nb:
+                if dump_list(ob) != dump_list(nb):
+                    self._site_for_scope(scope, entry_lines(o), bound_names(o), f"{f} added/removed")
+            else:
+                self.diff_body(ob, nb, scope, block_hdr)
+
+    def _diff_simple(self, o, n, scope, olds, index, header):
         # simple statement
         if _is_const_expr(o) and _is_const_expr(n):
             if index == 0 and (_is_doc(o) or _is_doc(n)):
@@ -360,6 +404,7 @@ class Analysis:
                                class_path=_class_path(scope), literal=_literal_change(o, n),
                                annotated=isinstance(o, ast.AnnAssign) or isinstance(n, ast.AnnAssign),
                                class_heads=_class_heads(scope), value_only=value_only_annassign(o, n)))
+        self._pend(self.sites[-1], "changed", o, n, scope)
 
     def _diff_def(self, o, n, scope, olds, index, header):
         sig_changed = dump_field(o, "args") != dump_field(n, "args")
@@ -379,6 +424,7 @@ class Analysis:
                                        why="nested def header"))
             elif deco_changed or name_changed or tp_changed or not _only_constant_defaults(o.args, n.args):
                 self.sites.append(Site("import", _header_lines(o), {o.name, n.name}, why=f"def {o.name} header"))
+                self._pend(self.sites[-1], "def", o, n, scope)
         self.diff_body(o.body, n.body, ("function", o), _header_lines(o))
 
 
@@ -488,6 +534,13 @@ def literal_probe():
     Read on every call so tests can toggle it within one process. Independent of literal_guard.
     """
     return os.environ.get("BR_LITERAL_PROBE") == "1"
+
+
+def cells():
+    """BR_CELLS=1: eligible import-level sites are judged by the import-time state ("cells") that
+    differs between the pinned and the patched code (selector/cells_static.py decides which
+    sites are eligible, impact.resolve_cells applies the rule). Read on every call."""
+    return os.environ.get("BR_CELLS") == "1"
 
 
 def _evaluates(node, hashable=False):
@@ -1082,6 +1135,11 @@ def analyse(old_src, new_src, key=None):
             except (SyntaxError, ValueError):
                 old_tree = None
     _dump_cache.clear()
-    sites = Analysis(old_src, new_src).run(old_tree)
+    module, is_package = None, False
+    if isinstance(key, str) and key.endswith(".py"):
+        module = key[:-3].replace("/", ".")
+        if module.endswith(".__init__"):
+            module, is_package = module[: -len(".__init__")], True
+    sites = Analysis(old_src, new_src, module=module, is_package=is_package).run(old_tree)
     _dump_cache.clear()
     return sites
