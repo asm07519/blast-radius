@@ -13,6 +13,7 @@ for _flag in (
     "BR_MUTATION_GUARD",
     "BR_HANG_GUARD",
     "BR_TPC_FIXTURE",
+    "BR_CELLS",
 ):
     os.environ.setdefault(_flag, "1")
 
