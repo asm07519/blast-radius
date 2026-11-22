@@ -73,6 +73,7 @@ def _class_family_users(key, maps):
         users |= maps.class_users(f"{mod}:{'.'.join(parts[:i])}")
     for ckey, (_, mro) in maps.class_info.items():
         if key in mro:
+            users |= maps.class_users(ckey)
             cmod, cqual = ckey.split(":", 1)
             refs.add(cqual.split(".", 1)[0])
             cparts = cqual.split(".")
@@ -117,7 +118,7 @@ def _bits_for_cell(cell, detail, maps):
             for kf in detail["keys"]:
                 key_bits |= maps.key_readers(cell, kf)
             whole_bits = users & (maps.whole_readers(attr) | maps.dyn_name_readers(attr, family_key=owner))
-            return imp_bits & (key_bits | whole_bits)
+            return key_bits | (imp_bits & whole_bits)
         dyn = maps.dyn_name_readers(attr, family_key=owner) if maps.has_cells else maps.dynamic_readers(
             attr, family_key=owner)
         return imp_bits & users & (maps.name_readers(attr) | dyn)
@@ -191,7 +192,13 @@ def resolve_cells(res, maps, src_root, state_probe):
                 why = f"warm cache ({diff.warm_caches[0]})"
             else:
                 narrow = maps.cells_untrusted if maps.has_cells else 0
-                patched_mods = {p[:-3].replace("/", ".") for p in res.patched if p.endswith(".py")}
+                patched_mods = set()
+                for p in res.patched:
+                    if p.endswith(".py"):
+                        m = p[:-3].replace("/", ".")
+                        if m.endswith(".__init__"):
+                            m = m[: -len(".__init__")]
+                        patched_mods.add(m)
                 for cell, detail in diff.cells.items():
                     if detail.get("unstable"):
                         owner_mod = cell[1].split(":", 1)[0]

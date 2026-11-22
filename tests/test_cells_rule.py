@@ -172,6 +172,17 @@ class CellsRuleTest(unittest.TestCase):
         self.assertEqual(called, [])
         self.assertEqual(res.bits, 0b11111)
 
+    def test_subclass_users_included_without_base_users(self):
+        maps = FakeMaps(has_cells=False)
+        maps._class_users = {"sqlglot.mod:Foo": 0b00000, "sqlglot.mod:Sub": 0b00010}
+        maps._name_readers = {"TABLE": 0b00010, "Foo": 0, "Sub": 0}
+        diff = StateDiff(True, "compared", cells={
+            ("c", "sqlglot.mod:Foo", "TABLE"): {"kind": "dict", "keys": ["s:A"], "order": False}
+        })
+        raw = _patch("sqlglot/mod.py", "    TABLE = {'A': 1}", "    TABLE = {'A': 2}")
+        res, _ = self.run_impact(raw, maps, diff)
+        self.assertEqual(res.bits, 0b00010)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -25,7 +25,7 @@ import os
 def _is_keyed_load(node, parent):
     """True when `node` (Name or Attribute with Load ctx) is consumed solely by a keyed op."""
     if isinstance(parent, ast.Subscript) and parent.value is node and isinstance(parent.ctx, ast.Load):
-        return True
+        return not isinstance(parent.slice, ast.Slice)
     if isinstance(parent, ast.Compare) and len(parent.ops) == 1 and isinstance(parent.ops[0], (ast.In, ast.NotIn)):
         if len(parent.comparators) == 1 and parent.comparators[0] is node:
             return True

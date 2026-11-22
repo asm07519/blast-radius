@@ -98,9 +98,9 @@ class Maps:
         keys = [""]
         if family_key is not None:
             keys.append(family_key)
-            # Subclasses/superclasses sharing an MRO with family_key
-            kmro = self.class_info.get(family_key, (False, ()))[1]
-            keys.extend(kmro)
+            for ckey, (_, mro) in self.class_info.items():
+                if ckey != family_key and family_key in mro:
+                    keys.append(ckey)
         for fk in keys:
             s = self._cells_dyn.get((fk, name))
             if s is not None:
