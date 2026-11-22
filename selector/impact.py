@@ -13,7 +13,7 @@ import posixpath
 import re
 import sys
 
-from . import pyast, tpc_fixture
+from . import guards, pyast, tpc_fixture
 from .patch import PatchError, apply, misplaced_hunk
 
 try:
@@ -56,6 +56,18 @@ def tpc_fixture_flag():
     tests whose part of the loaded pairs can change (selector/tpc_fixture.py); the other
     executor tests only need setUpClass to load the file. Read on every call."""
     return os.environ.get("BR_TPC_FIXTURE") == "1"
+
+
+def mutation_guard():
+    """BR_MUTATION_GUARD=1: a patch that adds a function-body mutation of shared class-level or
+    module-level state selects every test (selector/guards.py). Read on every call."""
+    return os.environ.get("BR_MUTATION_GUARD") == "1"
+
+
+def hang_guard():
+    """BR_HANG_GUARD=1: a patch that adds an exit-free endless loop selects every test
+    (selector/guards.py). Read on every call."""
+    return os.environ.get("BR_HANG_GUARD") == "1"
 
 
 def _exact_case(src_root, path):
@@ -410,6 +422,15 @@ def _modified(fp, path, src_root, maps, res, import_refiner):
         new = _apply_or_none(fp, old)
     if new is not None and new == old:
         return
+    if new is not None:
+        if mutation_guard():
+            found = guards.added_shared_mutation(old, new)
+            if found:
+                raise Everything(f"{path}: adds shared-state mutation ({found})")
+        if hang_guard():
+            found = guards.added_endless_loop(old, new)
+            if found:
+                raise Everything(f"{path}: adds an endless loop ({found})")
     # Anything reading the file's text sees any edit, comments included.
     res.add(maps.reads(path), None)
     if new is None:
