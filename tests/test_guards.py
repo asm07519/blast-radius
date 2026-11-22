@@ -51,6 +51,14 @@ class MutationGuardTest(unittest.TestCase):
         new = b"X = 0\ndef f():\n    global X\n    X = 1\n    return X\n"
         self.assertIsNotNone(guards.added_shared_mutation(old, new))
 
+    def test_detects_augassign_on_self_class_attr_and_globals_call(self):
+        old = b"class Foo:\n    arg_types = {'a': True}\n    def f(self):\n        return 1\n"
+        new = b"class Foo:\n    arg_types = {'a': True}\n    def f(self):\n        self.arg_types |= {'b': False}\n        return 1\n"
+        self.assertIsNotNone(guards.added_shared_mutation(old, new))
+        old2 = b"def f():\n    return 1\n"
+        new2 = b"def f():\n    globals()['X'] = 1\n    return 1\n"
+        self.assertIsNotNone(guards.added_shared_mutation(old2, new2))
+
     def test_ignores_local_and_instance_mutations(self):
         old = b"class Foo:\n    def f(self):\n        return 1\n"
         new = (

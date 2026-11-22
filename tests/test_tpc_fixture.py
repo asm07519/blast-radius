@@ -489,6 +489,8 @@ class RuleTest(unittest.TestCase):
             b"DROP TABLE lineitem",
             b"WITH x AS (DELETE FROM lineitem) SELECT * FROM x",
             b"SELECT 'unclosed",
+            b"/* /* */ SELECT \" */ COPY (SELECT 'x(' AS a) TO 'tests/test_executor.py' (HEADER false) -- \"",
+            b"SELECT E'\\' /* '; COPY (SELECT 'x(' AS a) TO 'tests/test_executor.py' (HEADER false); -- */ ''",
         ):
             with self.subTest(bad=bad):
                 self.assertFalse(tpc_fixture._is_plain_query(bad.decode()))

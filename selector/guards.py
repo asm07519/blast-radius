@@ -110,6 +110,8 @@ def _is_shared_target(node, locs, declared_globs, mod_globs, classes, class_attr
         return _is_shared_target(node.value, locs, declared_globs, mod_globs, classes, class_attrs, attr_write=False)
     if isinstance(node, ast.Subscript):
         return _is_shared_target(node.value, locs, declared_globs, mod_globs, classes, class_attrs, attr_write=False)
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "globals" and not node.args:
+        return True
     return False
 
 
@@ -166,7 +168,7 @@ def _shared_mutations(src):
                         t.value, locs, declared_globs, mod_globs, classes, class_attrs):
                     record(t, "shared subscript augassign")
                 elif isinstance(t, ast.Attribute) and _is_shared_target(
-                        t, locs, declared_globs, mod_globs, classes, class_attrs, attr_write=True):
+                        t, locs, declared_globs, mod_globs, classes, class_attrs, attr_write=False):
                     record(t, f".{t.attr} op= ...")
             elif isinstance(node, ast.Delete):
                 for t in node.targets:
@@ -249,9 +251,17 @@ def _loop_has_exit(loop_node):
     return walk(loop_node.body, False)
 
 
+def _is_truthy_const(node):
+    if isinstance(node, ast.Constant):
+        return bool(node.value)
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+        return isinstance(node.operand, ast.Constant) and not bool(node.operand.value)
+    return False
+
+
 def _endless_loop_kind(node):
     if isinstance(node, ast.While):
-        if isinstance(node.test, ast.Constant) and bool(node.test.value) and not _loop_has_exit(node):
+        if _is_truthy_const(node.test) and not _loop_has_exit(node):
             return "while True"
     elif isinstance(node, (ast.For, ast.AsyncFor)):
         it = node.iter

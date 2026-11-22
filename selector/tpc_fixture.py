@@ -93,15 +93,13 @@ def _is_plain_query(sql):
             i = n if nl < 0 else nl + 1
             out.append(" ")
         elif c == "/" and i + 1 < n and sql[i + 1] == "*":
-            end = sql.find("*/", i + 2)
-            if end < 0:
-                return False
-            i = end + 2
-            out.append(" ")
+            return False  # fail closed on block comments (DuckDB supports nested /* /* */ */)
         elif c in ("'", '"'):
             quote = c
             i += 1
             while i < n:
+                if sql[i] == "\\":
+                    return False  # fail closed on backslash escapes (e.g. DuckDB E'\'')
                 if sql[i] == quote:
                     if i + 1 < n and sql[i + 1] == quote:
                         i += 2
