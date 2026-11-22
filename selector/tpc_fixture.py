@@ -70,6 +70,62 @@ _INDEX_LINE = re.compile(rb"index [0-9a-f]{7,64}\.\.[0-9a-f]{7,64}(?: 100644)?\r
 _COMMIT_BLOCKERS = {"conftest.py", "sitecustomize.py", "usercustomize.py", "pyproject.toml", "setup.cfg",
                     "tox.ini", "pytest.ini", ".gitattributes"}
 
+# DuckDB statements/keywords that can mutate the connection, filesystem, or environment.
+_FORBIDDEN_SQL_KEYWORDS = frozenset({
+    "COPY", "EXPORT", "IMPORT", "ATTACH", "DETACH", "INSTALL", "LOAD", "PRAGMA",
+    "SET", "RESET", "CREATE", "DROP", "ALTER", "INSERT", "UPDATE", "DELETE",
+    "MERGE", "REPLACE", "TRUNCATE", "CALL", "EXEC", "EXECUTE", "VACUUM",
+    "CHECKPOINT", "WRITE_CSV", "WRITE_PARQUET", "SHELL", "SYSTEM", "FORCE",
+    "SECRET", "MACRO",
+})
+_WORD_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def _is_plain_query(sql):
+    """True when `sql` is a plain SELECT or WITH query with no DDL/DML/COPY/PRAGMA/ATTACH
+    or unparsed quoting constructs outside string literals and comments."""
+    out = []
+    i, n = 0, len(sql)
+    while i < n:
+        c = sql[i]
+        if c == "-" and i + 1 < n and sql[i + 1] == "-":
+            nl = sql.find("\n", i + 2)
+            i = n if nl < 0 else nl + 1
+            out.append(" ")
+        elif c == "/" and i + 1 < n and sql[i + 1] == "*":
+            end = sql.find("*/", i + 2)
+            if end < 0:
+                return False
+            i = end + 2
+            out.append(" ")
+        elif c in ("'", '"'):
+            quote = c
+            i += 1
+            while i < n:
+                if sql[i] == quote:
+                    if i + 1 < n and sql[i + 1] == quote:
+                        i += 2
+                        continue
+                    i += 1
+                    break
+                i += 1
+            else:
+                return False  # unclosed string/identifier
+            out.append(" ")
+        elif c in ("$", "`", ";"):
+            return False
+        else:
+            out.append(c)
+            i += 1
+    stripped = "".join(out).lstrip(" \t\r\n(")
+    m = _WORD_RE.match(stripped)
+    if not m or m.group(0).upper() not in ("SELECT", "WITH"):
+        return False
+    for word in _WORD_RE.findall(stripped):
+        if word.upper() in _FORBIDDEN_SQL_KEYWORDS:
+            return False
+    return True
+
 
 # --- the pinned loader, on bytes -------------------------------------------------------------
 
@@ -192,7 +248,7 @@ def _commit_blocker(fp, file_patches):
                 return f"{p} is patched too"
             if f is not fp and p.startswith(("tests/fixtures/optimizer/tpc-h/", "tests/fixtures/optimizer/tpc-ds/")):
                 return f"{p} is patched too"
-            if p.startswith("tests/") and p.endswith(".py"):
+            if p.startswith("tests/") and (p.endswith((".py", ".pyc", ".pyo", ".so", ".pyd")) or "/__pycache__/" in p):
                 return f"{p} is patched"
             if posixpath.basename(p) in _COMMIT_BLOCKERS:
                 return f"{p} is patched"
@@ -243,6 +299,10 @@ def narrow(fp, path, old, src_root, maps, file_patches, read_src):
     if path == TPCDS:
         if _meta_sql(old_pairs) != _meta_sql(new_pairs):
             keep.add(EXECUTE_TPCDS)
+            old_sqls = {sql for _, sql, _ in old_pairs}
+            for _, sql, _ in new_pairs:
+                if sql not in old_sqls and not _is_plain_query(sql):
+                    return None, "changed tpc-ds query is not a plain SELECT/WITH query"
             if other_sqls & {sql for _, sql, _ in new_pairs}:
                 return None, "a tpc-ds query equals a tpc-h query (shared cache)"
     else:
@@ -254,8 +314,16 @@ def narrow(fp, path, old, src_root, maps, file_patches, read_src):
             keep.add(EXECUTE_TPCH)
         if opt:
             keep.add(OPTIMIZED_TPCH)
-        if keep and other_sqls & {sql for _, sql, _ in new_pairs}:
-            return None, "a tpc-h query equals a tpc-ds query (shared cache)"
+        if keep:
+            old_sqls = {sql for _, sql, _ in old_pairs}
+            old_exps = {exp_sql for _, _, exp_sql in old_pairs}
+            for _, sql, exp_sql in new_pairs:
+                if sql not in old_sqls and not _is_plain_query(sql):
+                    return None, "changed tpc-h query is not a plain SELECT/WITH query"
+                if opt and exp_sql not in old_exps and not _is_plain_query(exp_sql):
+                    return None, "changed tpc-h expected statement is not a plain SELECT/WITH query"
+            if other_sqls & {sql for _, sql, _ in new_pairs}:
+                return None, "a tpc-h query equals a tpc-ds query (shared cache)"
 
     drop = executor - keep
     bits = readers

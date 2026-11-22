@@ -471,6 +471,36 @@ class RuleTest(unittest.TestCase):
         raw = b"diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -5,3 +5,3 @@\n e\n b\n-c\n+C\n"
         self.assertEqual(tpc_fixture._plain_new(parse(raw)[0], old), b"a\nb\nc\nd\ne\nb\nC\n")
 
+    def test_all_pinned_queries_are_plain_select_or_with(self):
+        for path in (TPCH, TPCDS):
+            for _, sql, exp_sql in tpc_fixture.load_pairs(self.old[path]):
+                self.assertTrue(tpc_fixture._is_plain_query(sql), f"{path} sql: {sql[:80]}")
+                self.assertTrue(tpc_fixture._is_plain_query(exp_sql), f"{path} exp: {exp_sql[:80]}")
+
+    def test_non_plain_query_falls_back(self):
+        # Suspected miss 1 from review-tpc: COPY ... TO overwrites a test file on real duckdb.
+        first_expected = tpc_fixture.load_pairs(self.old[TPCH])[0][2].encode()
+        evil = b"COPY (SELECT 'x(' AS a) TO 'tests/test_executor.py' (HEADER false)"
+        self.expect(self.edit(TPCH, first_expected, evil), None, TPCH)
+        # Also block PRAGMA / ATTACH / DROP / INSERT / CREATE in tpc-h expected or tpc-ds sql.
+        for bad in (
+            b"PRAGMA disable_progress_bar",
+            b"ATTACH '/tmp/x.db' AS x",
+            b"DROP TABLE lineitem",
+            b"WITH x AS (DELETE FROM lineitem) SELECT * FROM x",
+            b"SELECT 'unclosed",
+        ):
+            with self.subTest(bad=bad):
+                self.assertFalse(tpc_fixture._is_plain_query(bad.decode()))
+        self.expect(self.edit(TPCDS, b"WITH customer_total_return\n", b"COPY (SELECT 1) TO '/tmp/x' --\n"), None, TPCDS)
+
+    def test_pycache_under_tests_falls_back(self):
+        fixture = self.edit(TPCDS, b"-- TPC-DS 1\n", b"-- TPC-DS one\n")
+        pyc = diff("tests/__pycache__/helpers.cpython-313.pyc", b"a\n", b"b\n")
+        got, res = self.run_patch(fixture + pyc)
+        self.assertTrue(self.readers(TPCDS) <= got)
+        self.assertIn("narrowing off", " ".join(res.notes))
+
 
 if __name__ == "__main__":
     unittest.main()
